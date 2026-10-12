@@ -1,0 +1,69 @@
+package dev.vehiclebridge.byd
+
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import dev.vehiclebridge.byd.data.*
+import dev.vehiclebridge.byd.protocol.*
+import dev.vehiclebridge.byd.bridge.BemfaBinding
+import java.util.concurrent.Executors
+
+class AuthState(val busy: Boolean=false, val info: SessionInfo?=null, val message: String="请输入账号密码登录")
+class AuthController private constructor(context: Context) {
+    companion object {
+        @Volatile private var instance: AuthController?=null
+        fun get(context: Context): AuthController = instance ?: synchronized(this) {instance ?: AuthController(context.applicationContext).also {instance=it}}
+    }
+    private val appContext=context.applicationContext
+    private val api=BydApi()
+    private val repository=SessionRepository(api,AndroidSessionStore.get(context))
+    private val executor=Executors.newSingleThreadExecutor()
+    private val main=Handler(Looper.getMainLooper())
+    private val observers=mutableSetOf<(AuthState)->Unit>()
+    var state=AuthState();private set
+    private var initialized=false
+    private var pending=0
+    fun observe(observer: (AuthState)->Unit) {observers.add(observer);observer(state)}
+    fun remove(observer: (AuthState)->Unit) {observers.remove(observer)}
+    private fun update(value: AuthState) {state=value;observers.toList().forEach {it(value)}}
+    private fun run(message: String, successMessage: String? = null, complete: ((String)->Unit)? = null, action: ()->SessionInfo?) {
+        if(pending>0) {complete?.invoke("操作进行中，本条指令未执行");return}
+        pending++
+        val previous=state.info
+        update(AuthState(true,previous,message))
+        executor.execute {
+            try {
+                val result=action()
+                main.post {pending--;update(AuthState(pending>0,result,result?.controlMessage ?: successMessage ?: when {result==null -> "请输入账号密码登录";result.silentlyLoggedIn -> "会话已通过静默登录恢复";result.restored -> "已复用保存的会话";else -> "登录成功，信息已加密保存"}));complete?.invoke(result?.controlMessage ?: successMessage ?: "已完成")}
+            } catch(e:Exception) {
+                val failure=if(e is ApiFailure) e.label + (e.code?.let {"（代码 $it）"} ?: "") else "操作未完成，请重试"
+                val latest=repository.snapshot() ?: previous
+                main.post {pending--;update(AuthState(pending>0,latest,failure));complete?.invoke(failure)}
+            }
+        }
+    }
+    fun initialize() {if(!initialized){initialized=true;run("正在恢复登录信息",action=repository::restore)}}
+    fun login(config: AccountConfig) = run("正在登录并验证车辆列表") {repository.login(config)}
+    fun check() = run("正在验证保存的会话",action=repository::restore)
+    fun select(vin: String) = run("正在选择车辆","已选择车辆") {repository.select(vin)}
+    fun savePin(vin: String,pin: String) = run("正在验证操作 PIN","PIN 验证通过，已加密保存") {repository.savePin(vin,pin)}
+    fun removePin(vin: String) = run("正在移除 PIN","已移除保存的 PIN") {repository.removePin(vin)}
+    fun refreshTelemetry(vin: String) = run("正在刷新车辆数据","车辆数据已更新") {repository.refreshTelemetry(vin)}
+    fun setShutdownOnLock(vin: String,enabled: Boolean) = run("正在保存锁车偏好","锁车偏好已保存") {repository.setShutdownOnLock(vin,enabled)}
+    private fun controlProgress(text: String) {main.post {if(pending>0) update(AuthState(true,state.info,text))}}
+    fun sendDoor(vin: String,action: DoorAction,pin: String?=null) = run("正在发送车辆请求","请求已发送，车辆实际状态请现场确认",complete={dev.vehiclebridge.byd.bridge.BridgeNotifications.result(appContext,it)}) {repository.sendDoor(vin,action,pin,::controlProgress)}
+    fun saveBinding(binding: BemfaBinding) = run("正在保存设备绑定","绑定已保存，点击启动后台联动") {repository.saveBinding(binding)}
+    fun enableBinding() = run("正在启动后台联动","后台联动已启用") {repository.enableBinding()}
+    fun dispatchBridge(id: String,action: DoorAction,complete: (String)->Unit) = run("正在执行巴法云指令","请求已发送，车辆实际状态请现场确认",{text -> dev.vehiclebridge.byd.bridge.BridgeNotifications.result(appContext,text);complete(text)}) {repository.sendBoundDoor(id,action,::controlProgress)}
+    fun stopBridge() {
+        pending++
+        update(AuthState(true,state.info,"正在停止后台联动"))
+        executor.execute {
+            try {
+                val info=repository.disableBinding()
+                main.post {pending--;update(AuthState(pending>0,info,"后台联动已停止"))}
+            } catch(_:Exception) { main.post {pending--;update(AuthState(pending>0,state.info,"停止设置保存失败，请重试"))} }
+        }
+    }
+    fun logout() = run("正在退出登录") {repository.logout();api.clearCookies();null}
+}

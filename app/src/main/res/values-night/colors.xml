@@ -1,0 +1,4 @@
+<resources><color name="page">#101722</color><color name="surface">#1B2534</color><color name="ink">#EDF2FA</color><color name="muted">#A8B4C7</color><color name="accent">#A9BCFF</color><color name="soft">#28364D</color><color name="line">#354257</color><color name="danger">#FFA5AC</color><color name="result_success">#86DCA5</color>
+<color name="result_unknown">#F2BD79</color>
+<color name="result_failure">#FF9C9C</color>
+</resources>

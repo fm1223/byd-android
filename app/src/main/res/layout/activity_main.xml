@@ -1,0 +1,115 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/rootScroll" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/page">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingHorizontal="20dp" android:paddingTop="16dp" android:paddingBottom="8dp">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+            <TextView android:id="@+id/pageTitle" style="@style/Title" android:layout_width="0dp" android:layout_weight="1" android:textSize="24sp" android:text="@string/ui_label_1" />
+            <TextView android:id="@+id/bridgeStatusBadge" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center" android:layout_marginStart="12dp" android:singleLine="true" android:clickable="true" android:focusable="true" android:accessibilityLiveRegion="polite" />
+        </LinearLayout>
+        <TextView android:id="@+id/pageSubtitle" style="@style/Caption" android:text="@string/ui_label_2" android:layout_marginTop="4dp" />
+    </LinearLayout>
+    <ScrollView android:id="@+id/contentScroll" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingHorizontal="20dp" android:paddingTop="@dimen/page_content_top" android:paddingBottom="20dp">
+            <TextView android:id="@+id/statusText" style="@style/Caption" android:layout_marginTop="0dp" android:layout_marginBottom="8dp" android:accessibilityLiveRegion="polite" />
+            <ProgressBar android:id="@+id/progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="4dp" android:indeterminate="true" android:visibility="gone" />
+            <LinearLayout android:id="@+id/loginForm" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                <LinearLayout style="@style/Card" android:layout_marginTop="0dp">
+                    <TextView style="@style/Title" android:text="@string/ui_label_3" android:layout_marginTop="0dp" />
+                    <TextView style="@style/Caption" android:text="@string/ui_label_4" android:layout_marginTop="8dp" />
+                    <EditText android:id="@+id/username" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/username" android:inputType="text" android:singleLine="true" android:autofillHints="username" android:layout_marginTop="12dp" style="@style/Field" />
+                    <EditText android:id="@+id/password" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/password" android:inputType="textPassword" android:singleLine="true" android:saveEnabled="false" android:autofillHints="password" android:layout_marginTop="12dp" style="@style/Field" />
+                    <TextView style="@style/Caption" android:text="@string/brand" android:layout_marginTop="8dp" />
+                    <Spinner android:id="@+id/brand" android:layout_width="match_parent" android:layout_height="48dp" android:entries="@array/brands" android:layout_marginTop="12dp" />
+                    <Button android:id="@+id/advancedToggle" style="@style/ActionButton" android:text="@string/ui_label_5" android:layout_marginTop="12dp" />
+                    <EditText android:id="@+id/deviceId" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/device_id" android:inputType="textVisiblePassword" android:singleLine="true" android:maxLength="32" android:saveEnabled="false" android:importantForAutofill="no" android:visibility="gone" android:layout_marginTop="12dp" style="@style/Field" />
+                    <TextView android:id="@+id/deviceIdNote" style="@style/Caption" android:text="@string/device_id_note" android:visibility="gone" android:layout_marginTop="8dp" />
+                    <Button android:id="@+id/loginButton" style="@style/PrimaryButton" android:text="@string/ui_label_6" android:layout_marginTop="12dp" />
+                    <TextView style="@style/Caption" android:text="@string/login_note" android:layout_marginTop="8dp" />
+                </LinearLayout>
+            </LinearLayout>
+            <LinearLayout android:id="@+id/sessionPanel" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                <LinearLayout android:id="@+id/vehiclePage" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                    <LinearLayout style="@style/Card" android:layout_marginTop="0dp">
+                        <TextView android:id="@+id/vehicleName" style="@style/Title" android:layout_marginTop="0dp" />
+                        <TextView android:id="@+id/vehicleSubtitle" style="@style/Caption" android:layout_marginTop="8dp" />
+                        <ImageView android:id="@+id/vehicleImage" android:layout_width="match_parent" android:layout_height="150dp" android:layout_marginTop="12dp" android:scaleType="fitCenter" android:src="@drawable/vehicle_placeholder" android:contentDescription="@string/ui_label_7" />
+                        <TextView android:id="@+id/vehicleImageStatus" style="@style/Caption" android:text="@string/ui_label_7" android:gravity="center" android:layout_marginTop="8dp" />
+                        <TextView android:id="@+id/vehicleChoiceLabel" style="@style/Caption" android:text="@string/ui_label_8" android:layout_marginTop="8dp" />
+                        <Spinner android:id="@+id/vehicleChoice" android:layout_width="match_parent" android:layout_height="48dp" android:saveEnabled="false" android:layout_marginTop="12dp" />
+                    </LinearLayout>
+                    <LinearLayout style="@style/Card">
+                        <TextView style="@style/Section" android:text="@string/ui_label_9" android:layout_marginTop="0dp" android:layout_marginBottom="0dp" />
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp">
+                            <Button android:id="@+id/unlockButton" style="@style/ActionButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:layout_marginEnd="6dp" android:text="@string/ui_label_10" android:textSize="16sp" android:layout_marginTop="0dp" />
+                            <Button android:id="@+id/lockButton" style="@style/ActionButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:layout_marginStart="6dp" android:text="@string/ui_label_11" android:textSize="16sp" android:layout_marginTop="0dp" />
+                        </LinearLayout>
+                        <Button android:id="@+id/shutdownButton" style="@style/ActionButton" android:text="@string/shutdown_action" android:layout_marginTop="12dp" />
+                        <TextView style="@style/Caption" android:text="@string/shutdown_hint" android:layout_marginTop="8dp" />
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="24dp" android:layout_marginTop="12dp" android:gravity="center_vertical">
+                            <TextView style="@style/Caption" android:layout_width="0dp" android:layout_weight="1" android:text="@string/latest_control_result" />
+                            <ProgressBar android:id="@+id/controlProgress" android:layout_width="20dp" android:layout_height="20dp" android:visibility="invisible" />
+                        </LinearLayout>
+                        <TextView android:id="@+id/controlResult" style="@style/Body" android:text="@string/ui_label_12" android:layout_marginTop="8dp" android:accessibilityLiveRegion="polite" android:padding="12dp" android:background="@drawable/button_soft" />
+                        <TextView android:id="@+id/pinPrompt" style="@style/Caption" android:layout_marginTop="8dp" />
+                        <TextView style="@style/Caption" android:text="@string/ui_label_13" android:layout_marginTop="8dp" />
+                    </LinearLayout>
+                    <LinearLayout style="@style/Card">
+                        <TextView style="@style/Section" android:text="@string/ui_label_14" android:layout_marginTop="0dp" android:layout_marginBottom="0dp" />
+                        <TextView android:id="@+id/vehicleDetails" style="@style/Body" android:layout_marginTop="12dp" />
+                        <TextView android:id="@+id/vehicleVin" style="@style/Caption" android:layout_marginTop="8dp" />
+                    </LinearLayout>
+                    <LinearLayout android:id="@+id/telemetryCard" android:visibility="gone" style="@style/Card">
+                        <TextView style="@style/Section" android:text="@string/telemetry_title" android:layout_marginTop="0dp" android:layout_marginBottom="0dp" />
+                        <TextView android:id="@+id/telemetryValues" style="@style/Body" android:layout_marginTop="12dp" />
+                        <TextView android:id="@+id/telemetryTimestamp" style="@style/Caption" android:layout_marginTop="8dp" />
+                        <TextView android:id="@+id/telemetryMessage" style="@style/Caption" android:layout_marginTop="8dp" android:accessibilityLiveRegion="polite" />
+                        <Button android:id="@+id/refreshTelemetry" style="@style/ActionButton" android:text="@string/telemetry_refresh" android:layout_marginTop="12dp" />
+                    </LinearLayout>
+                    <LinearLayout style="@style/Card">
+                        <TextView style="@style/Section" android:text="@string/ui_label_15" android:layout_marginTop="0dp" android:layout_marginBottom="0dp" />
+                        <TextView android:id="@+id/bridgeTarget" style="@style/Caption" android:layout_marginTop="8dp" />
+                        <Button android:id="@+id/bemfaButton" style="@style/ActionButton" android:text="@string/ui_label_16" android:layout_marginTop="12dp" />
+                    </LinearLayout>
+                </LinearLayout>
+                <LinearLayout android:id="@+id/settingsPage" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                    <LinearLayout style="@style/Card" android:layout_marginTop="0dp">
+                        <TextView style="@style/Section" android:text="@string/vehicle_control_preferences" android:layout_marginTop="0dp" android:layout_marginBottom="0dp" />
+                        <TextView android:id="@+id/shutdownPreferenceVehicle" style="@style/Caption" android:layout_marginTop="8dp" />
+                        <Switch android:id="@+id/shutdownOnLock" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/shutdown_on_lock" android:layout_marginTop="12dp" />
+                        <TextView style="@style/Caption" android:text="@string/shutdown_on_lock_hint" android:layout_marginTop="8dp" />
+                    </LinearLayout>
+                    <LinearLayout style="@style/Card">
+                        <TextView style="@style/Section" android:text="@string/ui_label_17" android:layout_marginTop="0dp" android:layout_marginBottom="0dp" />
+                        <TextView android:id="@+id/sessionSummary" style="@style/Body" android:layout_marginTop="12dp" />
+                        <TextView style="@style/Caption" android:text="@string/saved_password_note" android:layout_marginTop="8dp" />
+                        <Button android:id="@+id/checkButton" style="@style/ActionButton" android:text="@string/ui_label_18" android:layout_marginTop="12dp" />
+                    </LinearLayout>
+                    <LinearLayout style="@style/Card">
+                        <TextView style="@style/Section" android:text="@string/ui_label_19" android:layout_marginTop="0dp" android:layout_marginBottom="0dp" />
+                        <TextView android:id="@+id/pinStatus" style="@style/Body" android:layout_marginTop="12dp" />
+                        <TextView android:id="@+id/pinVehicle" style="@style/Caption" android:layout_marginTop="8dp" />
+                        <Button android:id="@+id/setPinButton" style="@style/ActionButton" android:text="@string/ui_label_20" android:layout_marginTop="12dp" />
+                        <Button android:id="@+id/removePinButton" style="@style/ActionButton" android:text="@string/ui_label_21" android:layout_marginTop="12dp" />
+                    </LinearLayout>
+                    <LinearLayout style="@style/Card">
+                        <TextView style="@style/Section" android:text="@string/ui_label_22" android:layout_marginTop="0dp" android:layout_marginBottom="0dp" />
+                        <Button android:id="@+id/notificationSettings" style="@style/ActionButton" android:text="@string/ui_label_23" android:layout_marginTop="12dp" />
+                        <Button android:id="@+id/systemSettings" style="@style/ActionButton" android:text="@string/ui_label_24" android:layout_marginTop="12dp" />
+                        <TextView style="@style/Caption" android:text="@string/ui_label_25" android:layout_marginTop="8dp" />
+                    </LinearLayout>
+                    <LinearLayout style="@style/Card">
+                        <TextView style="@style/Section" android:text="@string/ui_label_26" android:layout_marginTop="0dp" android:layout_marginBottom="0dp" />
+                        <TextView style="@style/Body" android:text="@string/ui_label_27" android:layout_marginTop="12dp" />
+                        <TextView android:id="@+id/aboutVersion" style="@style/Caption" android:layout_marginTop="8dp" />
+                        <Button android:id="@+id/licenseButton" style="@style/ActionButton" android:text="@string/ui_label_28" android:layout_marginTop="12dp" />
+                        <Button android:id="@+id/logoutButton" style="@style/ActionButton" android:text="@string/ui_label_29" android:layout_marginTop="12dp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+    <include android:id="@+id/bridgePanel" layout="@layout/activity_bemfa" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:visibility="gone" />
+    <LinearLayout android:id="@+id/bottomNav" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/surface" android:paddingHorizontal="12dp">
+        <Button android:id="@+id/navVehicle" android:drawableTop="@drawable/ic_vehicle" android:drawablePadding="2dp" android:padding="4dp" style="@style/NavButton" android:text="@string/ui_label_30" />
+        <Button android:id="@+id/navBridge" android:drawableTop="@drawable/ic_bridge" android:drawablePadding="2dp" android:padding="4dp" style="@style/NavButton" android:text="@string/ui_label_31" />
+        <Button android:id="@+id/navSettings" android:drawableTop="@drawable/ic_settings" android:drawablePadding="2dp" android:padding="4dp" style="@style/NavButton" android:text="@string/ui_label_32" />
+    </LinearLayout>
+</LinearLayout>

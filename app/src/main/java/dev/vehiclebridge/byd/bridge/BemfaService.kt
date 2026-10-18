@@ -80,7 +80,7 @@ class BemfaService: Service() {
         val stop=PendingIntent.getService(this,1,Intent(this,BemfaService::class.java).setAction(STOP),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this,CHANNEL).setSmallIcon(R.drawable.ic_app).setContentTitle("车辆助手 · 巴法云联动")
             .setContentText(text).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
-            .setVisibility(Notification.VISIBILITY_PRIVATE).addAction(Notification.Action.Builder(null,"停止",stop).build()).build()
+            .setVisibility(Notification.VISIBILITY_PUBLIC).addAction(Notification.Action.Builder(null,"停止",stop).build()).build()
     }
     private fun status(text: String, connection: BridgeConnection? = null) {
         if(closed.get()) return

@@ -15,9 +15,9 @@ internal object BridgeNotifications {
     const val RESULT_CHANNEL="vehicle_results"
     fun ensureChannel(context: Context) {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL,"车辆设备联动",NotificationManager.IMPORTANCE_LOW))
+            NotificationChannel(CHANNEL,"车辆设备联动",NotificationManager.IMPORTANCE_LOW).apply {lockscreenVisibility=Notification.VISIBILITY_PUBLIC})
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(RESULT_CHANNEL,"车辆操作结果",NotificationManager.IMPORTANCE_DEFAULT))
+            NotificationChannel(RESULT_CHANNEL,"车辆操作结果",NotificationManager.IMPORTANCE_DEFAULT).apply {lockscreenVisibility=Notification.VISIBILITY_PUBLIC})
     }
     /** Publish each completed operation independently of the ongoing service channel. */
     fun result(context: Context,text: String) {
@@ -28,7 +28,7 @@ internal object BridgeNotifications {
         val note=Notification.Builder(context,RESULT_CHANNEL).setSmallIcon(R.drawable.ic_app)
             .setContentTitle("车辆助手 · 操作结果").setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text)).setContentIntent(open)
-            .setAutoCancel(true).setVisibility(Notification.VISIBILITY_PRIVATE).build()
+            .setAutoCancel(true).setVisibility(Notification.VISIBILITY_PUBLIC).build()
         // The system controls permission and channel visibility. Never override a blocked channel.
         try {context.getSystemService(NotificationManager::class.java).notify(21,note)}
         catch(_:SecurityException) {}

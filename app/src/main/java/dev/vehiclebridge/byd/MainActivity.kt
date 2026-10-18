@@ -31,6 +31,9 @@ class MainActivity: Activity() {
     private lateinit var imageLoader: VehicleImageLoader
     private var lastControlMessage="暂未发送车辆请求"
     private var manualRequest=false
+    private var needsStatusRefresh=true
+    private val statusHandler=android.os.Handler(android.os.Looper.getMainLooper())
+    private val statusTick=object: Runnable {override fun run() {if(resumed) {renderControls(controller.state);statusHandler.postDelayed(this,30_000)}}}
     private var renderedVehicleVin: String?=null
     private var pinDialog: AlertDialog? = null
     private val bridgeObserver: (String)->Unit={binding.bridgeStatusBadge.showBridgeStatus(controller.state.info?.binding?.enabled==true)}
@@ -90,12 +93,16 @@ class MainActivity: Activity() {
             pinDialog("验证并保存 PIN · " + vehicle.displayName) {controller.savePin(vehicle.vin,it)}
         }
         binding.removePinButton.setOnClickListener {controller.state.info?.selected?.let {controller.removePin(it.vin)}}
-        binding.unlockButton.setOnClickListener {sendDoor(DoorAction.UNLOCK)}
-        binding.lockButton.setOnClickListener {sendDoor(DoorAction.LOCK)}
-        binding.verifyVehicleStatus.setOnClickListener {controller.state.info?.selected?.let {controller.probeVehicleStatus(it.vin)}}
+        binding.doorButton.setOnClickListener {
+            val status=controller.state.info?.vehicleStatus
+            chooseAction(status?.reportedDoorAction(),"选择车锁操作",listOf("解锁" to DoorAction.UNLOCK,"锁车" to DoorAction.LOCK))
+        }
+        binding.trunkButton.setOnClickListener {
+            val status=controller.state.info?.vehicleStatus
+            chooseAction(status?.reportedTrunkAction(),"选择后备箱操作",listOf("打开后备箱" to DoorAction.OPEN_TRUNK,"关闭后备箱" to DoorAction.CLOSE_TRUNK))
+        }
+        binding.refreshVehicleStatus.setOnClickListener {controller.state.info?.selected?.let {needsStatusRefresh=false;controller.refreshVehicleStatus(it.vin)}}
         binding.shutdownButton.setOnClickListener {sendDoor(DoorAction.SHUTDOWN)}
-        binding.openTrunkButton.setOnClickListener {sendDoor(DoorAction.OPEN_TRUNK)}
-        binding.closeTrunkButton.setOnClickListener {sendDoor(DoorAction.CLOSE_TRUNK)}
         binding.shutdownOnLock.setOnCheckedChangeListener {_,enabled ->
             controller.state.info?.selected?.let {controller.setShutdownOnLock(it.vin,enabled)}
         }
@@ -121,6 +128,11 @@ class MainActivity: Activity() {
         pinDialog=dialog
         dialog.show()
     }
+    private fun chooseAction(action: DoorAction?,title: String,choices: List<Pair<String,DoorAction>>) {
+        if(controller.state.busy) return
+        if(action!=null) {sendDoor(action);return}
+        AlertDialog.Builder(this).setTitle(title).setItems(choices.map {it.first}.toTypedArray()) {_,index ->sendDoor(choices[index].second)}.setNegativeButton("取消",null).show()
+    }
     private fun sendDoor(action: DoorAction) {
         val info=controller.state.info ?: return
         val vehicle=info.selected ?: return
@@ -130,7 +142,7 @@ class MainActivity: Activity() {
     }
     private fun render(state: AuthState) {
         if(renderedVehicleVin!=state.info?.selectedVin) {
-            renderedVehicleVin=state.info?.selectedVin;lastControlMessage="暂未发送车辆请求";manualRequest=false
+            needsStatusRefresh=true;renderedVehicleVin=state.info?.selectedVin;lastControlMessage="暂未发送车辆请求";manualRequest=false
         }
         val trackingManual=manualRequest
         if(manualRequest) {
@@ -139,7 +151,7 @@ class MainActivity: Activity() {
         }
         if(!state.busy && !trackingManual) state.info?.selectedControlMessage?.let {lastControlMessage=it}
         binding.controlResult.text=lastControlMessage
-        binding.controlProgress.visibility=if(manualRequest && state.busy) View.VISIBLE else View.INVISIBLE
+        binding.controlProgress.visibility=if(state.action!=null && state.busy) View.VISIBLE else View.INVISIBLE
         binding.controlResult.setTextColor(getColor(when {
             lastControlMessage.contains("未知") -> R.color.result_unknown
             lastControlMessage.contains("失败") || lastControlMessage.contains("拒绝") -> R.color.result_failure
@@ -191,30 +203,87 @@ class MainActivity: Activity() {
         binding.pinPrompt.text=if(info?.hasPin==true) "PIN 已保存 · 可直接操作" else "未保存 PIN · 点击前往设置"
         binding.bridgeTarget.text=info?.binding?.let {value -> "已配置 "+value.devices.size+" 个设备（启用 "+value.activeDevices.size+" 个）\n"+value.devices.joinToString("、") {it.name+" · "+it.function.label}} ?: "添加巴法云设备，分别控制车锁或后备箱"
         imageLoader.load(vehicle?.imageUrl ?: "")
-        binding.verifyVehicleStatus.isEnabled=!state.busy && vehicle!=null
-        binding.vehicleStatusResult.text=info?.statusProbe ?: getString(R.string.vehicle_status_note)
-        if(!state.busy && vehicle!=null && intent.getBooleanExtra("verify_vehicle_status",false) && applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
-            intent.removeExtra("verify_vehicle_status")
-            binding.root.post {controller.probeVehicleStatus(vehicle.vin)}
-        }
-        binding.telemetryCard.visibility=View.GONE
-        val report=vehicle?.let {info.telemetry[it.vin] ?: it.summary}
-        binding.telemetryValues.text=report?.rows?.takeIf {it.isNotEmpty()}?.joinToString("\n") {it.first+"     "+it.second} ?: "总里程、胎压、能耗：未提供"
-        binding.telemetryTimestamp.text=report?.reportedAt?.let {"车辆上报："+DateFormat.getDateTimeInstance().format(Date(it))} ?: "车辆未提供上报时间"
-        binding.telemetryMessage.text=if(state.message.contains("车辆数据")) state.message else getString(R.string.telemetry_hint)
-        binding.refreshTelemetry.isEnabled=false
+        renderControls(state)
         binding.pinStatus.text=if(info?.hasPin==true) "操作 PIN：••••••（已验证并加密保存）" else "操作 PIN：未保存"
-        listOf(binding.setPinButton,binding.unlockButton,binding.lockButton,binding.shutdownButton,binding.openTrunkButton,binding.closeTrunkButton).forEach {it.isEnabled=!state.busy && vehicle!=null}
+        listOf(binding.setPinButton,binding.doorButton,binding.shutdownButton,binding.trunkButton).forEach {it.isEnabled=!state.busy && vehicle!=null}
         binding.shutdownOnLock.setOnCheckedChangeListener(null)
         binding.shutdownOnLock.isChecked=vehicle?.vin in (info?.shutdownOnLock ?: emptySet())
         binding.shutdownOnLock.isEnabled=!state.busy && vehicle!=null
         binding.shutdownOnLock.setOnCheckedChangeListener {_,enabled -> vehicle?.let {controller.setShutdownOnLock(it.vin,enabled)}}
-        binding.lockButton.text=if(binding.shutdownOnLock.isChecked) "锁车并熄火" else "锁车"
         binding.shutdownPreferenceVehicle.text=vehicle?.let {"当前车辆："+it.displayName} ?: "请先选择车辆"
         binding.bemfaButton.isEnabled=info!=null
         binding.navBridge.isEnabled=info!=null
         if(resumed && !state.busy && info?.binding?.enabled==true) BemfaService.start(this)
         binding.removePinButton.isEnabled=!state.busy && vehicle!=null && info?.hasPin==true
+        if(resumed && selectedTab==0 && needsStatusRefresh && !state.busy && vehicle!=null) {
+            needsStatusRefresh=false
+            binding.root.post {if(resumed && selectedTab==0 && !controller.state.busy && controller.state.info?.selectedVin==vehicle.vin) controller.refreshVehicleStatus(vehicle.vin,automatic=true) else needsStatusRefresh=true}
+        }
+    }
+    private fun renderControls(state: AuthState) {
+        val info=state.info
+        val status=info?.vehicleStatus
+        val report=status?.report
+        val online=report?.onlineState==1
+        val showReported=status?.canShowReportedState==true
+        val time=report?.locks?.reportedAt?.let {java.text.SimpleDateFormat("MM-dd HH:mm:ss",java.util.Locale.getDefault()).format(Date(it))}
+        binding.vehicleStatusResult.text=when {
+            report==null -> status?.vehicleError?.let {"刷新失败 · $it"} ?: "正在等待车辆状态"
+            online -> "车辆在线 · 上报 "+(time ?: "时间未知")
+            report.onlineState==2 -> "车辆离线 · 上报 "+(time ?: "时间未知")
+            else -> "上报 "+(time ?: "时间未知")
+        }
+        val sameVehicle=state.actionVin==info?.selectedVin
+        val doorBusy=state.busy && sameVehicle && state.action in listOf(DoorAction.LOCK,DoorAction.UNLOCK)
+        val trunkBusy=state.busy && sameVehicle && state.action in listOf(DoorAction.OPEN_TRUNK,DoorAction.CLOSE_TRUNK)
+        val shutdownBusy=state.busy && sameVehicle && (state.action==DoorAction.SHUTDOWN || (state.action==DoorAction.LOCK && info?.selectedVin in (info?.shutdownOnLock ?: emptySet())))
+        // The whole tile is a button, but its large label always describes reported state.
+        fun tile(view: android.widget.LinearLayout,icon: android.widget.ImageView,title: android.widget.TextView,hint: android.widget.TextView,progress: android.widget.ProgressBar,busy: Boolean,label: String,action: String,image: Int,tone: Int,category: String) {
+            val bg=getColor(when(tone) {1->R.color.state_calm_bg;2->R.color.state_active_bg;else->R.color.state_unknown_bg})
+            val ink=getColor(when(tone) {1->R.color.state_calm_ink;2->R.color.state_active_ink;else->R.color.state_unknown_ink})
+            val shape=android.graphics.drawable.GradientDrawable().apply {setColor(bg);cornerRadius=18*resources.displayMetrics.density}
+            view.background=android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(ink and 0x00ffffff or 0x22000000),shape,null)
+            view.isEnabled=!state.busy && info?.selected!=null
+            view.alpha=if(state.busy && !busy) 0.65f else 1f
+            view.contentDescription=category+"，"+(if(busy) "正在执行，请等待" else "$label，$action")
+            view.setAccessibilityDelegate(object: View.AccessibilityDelegate() {
+                override fun onInitializeAccessibilityNodeInfo(host: View,node: android.view.accessibility.AccessibilityNodeInfo) {super.onInitializeAccessibilityNodeInfo(host,node);node.className="android.widget.Button"}
+            })
+            title.text=if(busy) "执行中" else label;title.setTextColor(ink)
+            hint.text=if(busy) "等待反馈" else action;hint.setTextColor(ink)
+            icon.setImageResource(image);icon.imageTintList=android.content.res.ColorStateList.valueOf(ink)
+            icon.visibility=if(busy) View.INVISIBLE else View.VISIBLE
+            progress.indeterminateTintList=android.content.res.ColorStateList.valueOf(ink)
+            progress.visibility=if(busy) View.VISIBLE else View.GONE
+        }
+        val waiting=if(status?.explicitlyOffline==true) "待刷新" else "状态未知"
+        val lockLabel=if(info?.selectedVin in (info?.shutdownOnLock ?: emptySet())) "点击熄火并锁车" else "点击锁车"
+        val locked=showReported && report?.locks?.locks?.all {it==2}==true
+        val unlocked=showReported && report?.locks?.locks?.all {it==1}==true
+        val mixed=showReported && !locked && !unlocked && report?.locks?.locks?.any {it==1}==true
+        tile(binding.doorButton,binding.doorIcon,binding.doorState,binding.doorHint,binding.doorProgress,doorBusy,
+            when {locked->"已锁定";unlocked->"未锁定";mixed->"部分未锁";else->waiting},
+            when {locked->"点击解锁";unlocked->lockLabel;else->"点击选择操作"},
+            when {locked->R.drawable.ic_state_locked;unlocked || mixed->R.drawable.ic_state_unlocked;else->R.drawable.ic_state_unknown},
+            when {locked->1;unlocked || mixed->2;else->0},"车锁")
+        val trunkClosed=showReported && report?.trunk==0
+        val trunkOpen=showReported && report?.trunk==1
+        tile(binding.trunkButton,binding.trunkIcon,binding.trunkState,binding.trunkHint,binding.trunkProgress,trunkBusy,
+            when {trunkClosed->"已关闭";trunkOpen->"已打开";else->waiting},
+            when {trunkClosed->"点击打开";trunkOpen->"点击关闭";else->"点击选择操作"},
+            when {trunkClosed->R.drawable.ic_state_trunk_closed;trunkOpen->R.drawable.ic_state_trunk_open;else->R.drawable.ic_state_unknown},
+            when {trunkClosed->1;trunkOpen->2;else->0},"后备箱")
+        val powerOff=showReported && report?.power==1
+        val powerOn=showReported && report?.power==3
+        tile(binding.shutdownButton,binding.shutdownIcon,binding.shutdownState,binding.shutdownHint,binding.shutdownProgress,shutdownBusy,
+            when {powerOff->"已下电";powerOn->"已上电";else->waiting},"点击熄火",
+            if(powerOff || powerOn) R.drawable.ic_state_power else R.drawable.ic_state_unknown,
+            when {powerOff->1;powerOn->2;else->0},"车辆电源，电源状态仅作熄火参考")
+        binding.refreshVehicleStatus.text=if(state.busy && state.refreshing) "" else "刷新"
+        binding.refreshVehicleStatus.contentDescription=if(state.busy && state.refreshing) "正在刷新车辆状态" else "刷新车辆状态"
+        binding.refreshVehicleStatus.isEnabled=!state.busy && info?.selected!=null
+        binding.refreshStatusProgress.visibility=if(state.busy && state.refreshing) View.VISIBLE else View.GONE
+        if(state.busy && state.action!=null && sameVehicle) binding.controlResult.text=state.message
     }
     private fun selectTab(requested: Int) {
         val tab=requested.coerceIn(0,2)
@@ -223,7 +292,7 @@ class MainActivity: Activity() {
         if(previous!=1) scrollPositions[previous]=binding.contentScroll.scrollY
         val content=if(tab==1) binding.bridgePanel.root else binding.contentScroll
         content.animate().cancel();content.alpha=1f;content.translationX=0f
-        selectedTab=tab;render(controller.state)
+        selectedTab=tab;if(tab==0) needsStatusRefresh=true;render(controller.state)
         // Restore before the first visible frame, so a tab never flashes at the wrong scroll offset.
         content.viewTreeObserver.addOnPreDrawListener(object: android.view.ViewTreeObserver.OnPreDrawListener {
             override fun onPreDraw(): Boolean {
@@ -240,7 +309,7 @@ class MainActivity: Activity() {
     }
     override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);setIntent(intent);selectTab(intent.getIntExtra("tab",if(intent.getBooleanExtra("settings",false)) 2 else 0))}
     override fun onSaveInstanceState(outState: Bundle) {outState.putInt("tab",selectedTab);bridgePanel.saveState(outState);super.onSaveInstanceState(outState)}
-    override fun onResume() {super.onResume();resumed=true;bridgePanel.resume();render(controller.state)}
-    override fun onPause() {resumed=false;bridgePanel.pause();super.onPause()}
+    override fun onResume() {super.onResume();resumed=true;needsStatusRefresh=true;bridgePanel.resume();render(controller.state);statusHandler.removeCallbacks(statusTick);statusHandler.postDelayed(statusTick,30_000)}
+    override fun onPause() {resumed=false;statusHandler.removeCallbacks(statusTick);bridgePanel.pause();super.onPause()}
     override fun onDestroy() {pinDialog?.dismiss();bridgePanel.close();imageLoader.close();controller.remove(observer);BridgeStatus.remove(bridgeObserver);super.onDestroy()}
 }

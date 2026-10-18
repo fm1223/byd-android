@@ -1,0 +1,8 @@
+<resources>
+    <color name="state_calm_bg">#E6F3EF</color>
+    <color name="state_calm_ink">#237463</color>
+    <color name="state_active_bg">#FFF0DE</color>
+    <color name="state_active_ink">#A85B18</color>
+    <color name="state_unknown_bg">#EDF0F5</color>
+    <color name="state_unknown_ink">#687487</color>
+</resources>

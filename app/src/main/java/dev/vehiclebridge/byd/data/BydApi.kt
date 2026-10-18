@@ -13,7 +13,7 @@ interface AccountApi {
     fun vehicles(config: AccountConfig, session: Session): List<Vehicle> = throw ApiFailure(null,"车辆列表不可用")
     fun verifyPin(config: AccountConfig, session: Session, vehicle: Vehicle, pin: String): Unit = throw ApiFailure(null,"PIN 校验不可用")
     fun telemetry(config: AccountConfig,session: Session,vehicle: Vehicle): VehicleTelemetry = throw ApiFailure(null,"车辆数据不可用")
-    fun vehicleStatus(config: AccountConfig,session: Session,vehicle: Vehicle): String = throw ApiFailure(null,"车辆状态验证不可用")
+    fun fetchVehicleStatus(config: AccountConfig,session: Session,vehicle: Vehicle): VehicleStatus = throw ApiFailure(null,"车辆状态查询不可用")
     fun executeControl(config: AccountConfig,session: Session,vehicle: Vehicle,pin: String,action: DoorAction,progress: (String)->Unit = {}): ControlReceipt {
         sendDoor(config,session,vehicle,pin,action)
         return ControlReceipt(RemoteOutcome.ACCEPTED)
@@ -107,20 +107,27 @@ class BydApi(private val pause: (Long)->Unit = {Thread.sleep(it)}, private val t
         Thread.sleep(1200)
         return VehicleTelemetry.fromJson(protocol.telemetryResponse(post("/vehicleInfo/vehicle/vehicleRealTimeResult",protocol.telemetryRequest(session,vehicle,serial)),session))
     }
-    override fun vehicleStatus(config: AccountConfig,session: Session,vehicle: Vehicle): String {
+    private fun vehicleData(config: AccountConfig,session: Session,vehicle: Vehicle): JSONObject {
         val protocol=CnProtocol(config)
-        val first=protocol.statusResponse(post("/vehicleInfo/vehicle/vehicleRealTimeRequest",protocol.telemetryRequest(session,vehicle)),session)
-        var report=VehicleLockReport(first)
-        val serial=first.optString("requestSerial").takeIf {Regex("[A-Za-z0-9_-]{1,100}").matches(it) && it!="null"}
-        if(serial!=null && !report.completeAndRecent(System.currentTimeMillis())) repeat(3) {
+        fun ready(data: JSONObject)=VehicleStateReport(data).let {it.hasControlStates() || it.onlineState==2}
+        var data=protocol.statusResponse(post("/vehicleInfo/vehicle/vehicleRealTimeRequest",protocol.telemetryRequest(session,vehicle)),session)
+        val serial=data.optString("requestSerial").takeIf {Regex("[A-Za-z0-9_-]{1,100}").matches(it) && it!="null"}
+        if(serial!=null && !ready(data)) repeat(3) {
             pause(1500)
             val next=protocol.statusResponse(post("/vehicleInfo/vehicle/vehicleRealTimeResult",protocol.telemetryRequest(session,vehicle,serial)),session)
             val nextSerial=next.optString("requestSerial")
             if(nextSerial.isNotBlank() && nextSerial!=serial) throw ApiFailure(null,"状态查询编号不一致，未采用数据")
-            report=VehicleLockReport(next)
-            if(report.completeAndRecent(System.currentTimeMillis())) return report.describe()
+            data=next
+            if(ready(data)) return data
         }
-        return report.describe()
+        return data
+    }
+    override fun fetchVehicleStatus(config: AccountConfig,session: Session,vehicle: Vehicle): VehicleStatus {
+        fun failure(e: Exception)=(e as? ApiFailure)?.let {it.label+(it.code?.let {"（代码 $it）"} ?: "")} ?: "网络或响应处理失败"
+        var vehicleError: String?=null
+        val report=try {VehicleStateReport(vehicleData(config,session,vehicle))}
+            catch(e: Exception) {if(e is ApiFailure && e.sessionExpired) throw e;vehicleError=failure(e);null}
+        return VehicleStatus(report,vehicleError)
     }
     fun clearCookies() { synchronized(cookies) {cookies.clear()} }
 }

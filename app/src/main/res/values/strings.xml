@@ -88,6 +88,8 @@
  <string name="device_binding_name">设备名称，例如车辆门锁、后备箱</string>
  <string name="device_binding_function">控制功能</string>
  <string name="shared_bemfa_key_note">所有设备共用一个巴法云账号。已保存私钥可留空沿用；修改私钥会应用到全部设备。修改配置后会重新连接。</string>
- <string name="verify_vehicle_status">验证车辆状态 API</string>
- <string name="vehicle_status_note">只读取门锁与车辆上报时间，不发送控制命令。授权账号若需实名认证，请按官方 App 提示完成。</string>
+ <string name="refresh_status">刷新</string>
+ <string name="door_control_title">车锁</string>
+ <string name="trunk_control_title">后备箱</string>
+ <string name="power_state_hint">电源状态仅作熄火参考</string>
 </resources>

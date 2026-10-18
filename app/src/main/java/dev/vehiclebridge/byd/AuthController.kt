@@ -8,7 +8,7 @@ import dev.vehiclebridge.byd.protocol.*
 import dev.vehiclebridge.byd.bridge.BemfaBinding
 import java.util.concurrent.Executors
 
-class AuthState(val busy: Boolean=false, val info: SessionInfo?=null, val message: String="请输入账号密码登录")
+class AuthState(val busy: Boolean=false, val info: SessionInfo?=null, val message: String="请输入账号密码登录", val action: DoorAction?=null, val actionVin: String?=null, val refreshing: Boolean=false)
 class AuthController private constructor(context: Context) {
     companion object {
         @Volatile private var instance: AuthController?=null
@@ -21,11 +21,17 @@ class AuthController private constructor(context: Context) {
     private val main=Handler(Looper.getMainLooper())
     private val observers=mutableSetOf<(AuthState)->Unit>()
     var state=AuthState();private set
+    private val lastStatusRefresh=java.util.concurrent.ConcurrentHashMap<String,Long>()
     private var initialized=false
     private var pending=0
+    private var activeAction: DoorAction?=null
+    private var activeVin: String?=null
+    private var refreshing=false
+    private var afterRefresh: (()->Unit)?=null
     fun observe(observer: (AuthState)->Unit) {observers.add(observer);observer(state)}
     fun remove(observer: (AuthState)->Unit) {observers.remove(observer)}
-    private fun update(value: AuthState) {state=value;observers.toList().forEach {it(value)}}
+    private fun update(value: AuthState) {state=AuthState(value.busy,value.info,value.message,activeAction,activeVin,refreshing);observers.toList().forEach {it(state)}}
+    private fun finished() {activeAction=null;activeVin=null;refreshing=false;val next=afterRefresh;afterRefresh=null;next?.invoke()}
     private fun run(message: String, successMessage: String? = null, complete: ((String)->Unit)? = null, action: ()->SessionInfo?) {
         if(pending>0) {complete?.invoke("操作进行中，本条指令未执行");return}
         pending++
@@ -34,11 +40,11 @@ class AuthController private constructor(context: Context) {
         executor.execute {
             try {
                 val result=action()
-                main.post {pending--;update(AuthState(pending>0,result,result?.statusProbe?.takeIf {message=="正在验证车辆状态 API"} ?: result?.controlMessage ?: successMessage ?: when {result==null -> "请输入账号密码登录";result.silentlyLoggedIn -> "会话已通过静默登录恢复";result.restored -> "已复用保存的会话";else -> "登录成功，信息已加密保存"}));complete?.invoke(result?.controlMessage ?: successMessage ?: "已完成")}
+                main.post {pending--;update(AuthState(pending>0,result,result?.controlMessage ?: successMessage ?: when {result==null -> "请输入账号密码登录";result.silentlyLoggedIn -> "会话已通过静默登录恢复";result.restored -> "已复用保存的会话";else -> "登录成功，信息已加密保存"}));complete?.invoke(result?.controlMessage ?: successMessage ?: "已完成");finished()}
             } catch(e:Exception) {
                 val failure=if(e is ApiFailure) e.label + (e.code?.let {"（代码 $it）"} ?: "") else "操作未完成，请重试"
                 val latest=repository.snapshot() ?: previous
-                main.post {pending--;update(AuthState(pending>0,latest,failure));complete?.invoke(failure)}
+                main.post {pending--;update(AuthState(pending>0,latest,failure));complete?.invoke(failure);finished()}
             }
         }
     }
@@ -48,17 +54,48 @@ class AuthController private constructor(context: Context) {
     fun select(vin: String) = run("正在选择车辆","已选择车辆") {repository.select(vin)}
     fun savePin(vin: String,pin: String) = run("正在验证操作 PIN","PIN 验证通过，已加密保存") {repository.savePin(vin,pin)}
     fun removePin(vin: String) = run("正在移除 PIN","已移除保存的 PIN") {repository.removePin(vin)}
-    fun probeVehicleStatus(vin: String) = run("正在验证车辆状态 API","车辆状态验证完成") {repository.probeVehicleStatus(vin)}
+    fun refreshVehicleStatus(vin: String,automatic: Boolean=false) {
+        if(pending>0) return
+        val last=lastStatusRefresh[vin]
+        if(automatic && state.info?.vehicleStatus!=null && last!=null && android.os.SystemClock.elapsedRealtime()-last in 0 until 60_000L) return
+        refreshing=true
+        run("正在刷新车辆状态","车辆状态查询完成",complete={lastStatusRefresh[vin]=android.os.SystemClock.elapsedRealtime()}) {repository.refreshVehicleStatus(vin)}
+    }
+    private fun controlled(vin: String,action: ()->SessionInfo): SessionInfo {
+        val requestedAt=System.currentTimeMillis()
+        var result: SessionInfo?=null
+        try {result=action()}
+        finally {controlProgress("正在更新车辆状态，等待最新上报");repository.refreshAfterControl(vin,requestedAt);lastStatusRefresh[vin]=android.os.SystemClock.elapsedRealtime()}
+        return repository.snapshot()!!.also {it.controlMessage=result?.controlMessage}
+    }
     fun refreshTelemetry(vin: String) = run("正在刷新车辆数据","车辆数据已更新") {repository.refreshTelemetry(vin)}
     fun setShutdownOnLock(vin: String,enabled: Boolean) = run("正在保存锁车偏好","锁车偏好已保存") {repository.setShutdownOnLock(vin,enabled)}
     private fun controlProgress(text: String) {main.post {if(pending>0) update(AuthState(true,state.info,text))}}
-    fun sendDoor(vin: String,action: DoorAction,pin: String?=null) = run("正在发送车辆请求","请求已发送，车辆实际状态请现场确认",complete={dev.vehiclebridge.byd.bridge.BridgeNotifications.result(appContext,it)}) {repository.sendDoor(vin,action,pin,::controlProgress)}
+    fun sendDoor(vin: String,action: DoorAction,pin: String?=null) {
+        if(pending>0) return
+        activeAction=action;activeVin=vin
+        run("正在发送车辆请求","请求已发送，车辆实际状态请现场确认",complete={dev.vehiclebridge.byd.bridge.BridgeNotifications.result(appContext,it)}) {controlled(vin) {repository.sendDoor(vin,action,pin,::controlProgress)}}
+    }
     fun saveBinding(binding: BemfaBinding) = run("正在保存设备绑定","绑定已保存，点击启动后台联动") {repository.saveBinding(binding)}
     fun saveDevice(key: String,device: dev.vehiclebridge.byd.bridge.BemfaDevice,replacingId: String?) = run("正在保存设备","设备已保存") {repository.saveDevice(key,device,replacingId)}
     fun removeDevice(id: String) = run("正在删除设备","设备已删除") {repository.removeDevice(id)}
     fun setDeviceEnabled(id: String,enabled: Boolean) = run("正在更新设备","设备已更新") {repository.setDeviceEnabled(id,enabled)}
     fun enableBinding() = run("正在启动后台联动","后台联动已启用") {repository.enableBinding()}
-    fun dispatchBridge(id: String,action: DoorAction,configurationId: String?=null,complete: (String)->Unit) = run("正在执行巴法云指令","请求已发送，车辆实际状态请现场确认",{text -> dev.vehiclebridge.byd.bridge.BridgeNotifications.result(appContext,text);complete(text)}) {repository.sendBoundDoor(id,action,::controlProgress,configurationId)}
+    fun dispatchBridge(id: String,action: DoorAction,configurationId: String?=null,complete: (String)->Unit) {
+        // Keep one fresh delivery during a read-only refresh, never queue behind vehicle controls.
+        if(pending>0 && refreshing && afterRefresh==null) {
+            val received=android.os.SystemClock.elapsedRealtime()
+            afterRefresh={if(android.os.SystemClock.elapsedRealtime()-received<=30_000) dispatchBridge(id,action,configurationId,complete) else complete("等待状态刷新超时，本条指令未执行，请重新发送")}
+            return
+        }
+        if(pending>0) {complete("操作进行中，本条指令未执行，请稍后重新发送");return}
+        val vin=state.info?.binding?.activeDevices?.find {it.id==id}?.vin
+        activeAction=action;activeVin=vin
+        run("正在执行巴法云指令","请求已发送，车辆实际状态请现场确认",{text -> dev.vehiclebridge.byd.bridge.BridgeNotifications.result(appContext,text);complete(text)}) {
+            if(vin==null) throw ApiFailure(null,"设备绑定已改变，本条指令未执行")
+            controlled(vin) {repository.sendBoundDoor(id,action,::controlProgress,configurationId)}
+        }
+    }
     fun stopBridge() {
         pending++
         update(AuthState(true,state.info,"正在停止后台联动"))

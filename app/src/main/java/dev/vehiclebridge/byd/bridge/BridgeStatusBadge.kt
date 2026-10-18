@@ -21,9 +21,16 @@ internal fun TextView.showBridgeStatus(enabled: Boolean) {
         BridgeConnection.DISCONNECTED -> "● 联动重连中"
         BridgeConnection.STOPPED -> if(enabled) "● 联动待启动" else "● 联动已停止"
     }
+    setCompoundDrawablesRelative(null,null,null,null)
+    minWidth=0
     setTextColor(Color.parseColor(foreground));textSize=12f
     setTypeface(typeface,Typeface.BOLD)
     val scale=resources.displayMetrics.density
-    val horizontal=(10*scale).toInt();val vertical=(6*scale).toInt();setPadding(horizontal,vertical,horizontal,vertical)
-    this.background=GradientDrawable().apply {setColor(Color.parseColor(background));cornerRadius=12*scale}
+    val horizontal=(10*scale).toInt();val vertical=(4*scale).toInt()
+    val shape=GradientDrawable().apply {setColor(Color.parseColor(background));cornerRadius=12*scale}
+    // Keep the 48dp hit target, tightening only the visible vertical space.
+    val textHeight=paint.fontMetricsInt.descent-paint.fontMetricsInt.ascent
+    val inset=((48*scale-textHeight-2*vertical)/2).toInt().coerceAtLeast(0)
+    this.background=android.graphics.drawable.InsetDrawable(shape,0,inset,0,inset)
+    setPadding(horizontal,vertical,horizontal,vertical)
 }

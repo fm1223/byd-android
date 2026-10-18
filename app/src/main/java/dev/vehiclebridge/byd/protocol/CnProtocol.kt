@@ -124,6 +124,10 @@ class CnProtocol(private val config: AccountConfig, private val clock: () -> Lon
         }
         return controlEnvelope(session,vehicle,inner,now)
     }
+    fun hvacStatusRequest(session: Session,vehicle: Vehicle): String {
+        val now=clock();val inner=controlBase(now).apply {put("vin",vehicle.vin)}
+        return controlEnvelope(session,vehicle,inner,now)
+    }
     fun telemetryResponse(outer: JSONObject,session: Session): JSONObject {
         val code=outer.optString("code")
         if(code!="0" && code!="22") throw ApiFailure(code.takeIf {Regex("[0-9]{1,6}").matches(it)},

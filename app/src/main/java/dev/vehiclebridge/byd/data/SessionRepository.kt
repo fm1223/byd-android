@@ -9,14 +9,14 @@ class SavedAccount(val config: AccountConfig, val session: Session, val selected
 interface SessionStorage { fun read(): SavedAccount?; fun write(value: SavedAccount); fun clear() }
 class SessionInfo(val vehicleCount: Int, val createdAt: Long, val restored: Boolean, val silentlyLoggedIn: Boolean,
     val vehicles: List<Vehicle> = emptyList(), val selectedVin: String? = null, val hasPin: Boolean = false, val binding: BemfaBinding? = null, val pinVins: Set<String> = emptySet(), val telemetry: Map<String,VehicleTelemetry> = emptyMap(), val unsupportedTelemetry: Set<String> = emptySet(), val shutdownOnLock: Set<String> = emptySet()) {
-    var statusProbe: String? = null; internal set
+    var vehicleStatus: VehicleStatus? = null; internal set
     var controlMessage: String? = null; internal set
     var selectedControlMessage: String? = null; internal set
     val selected get() = vehicles.find { it.vin==selectedVin }
 }
 /** Serialized by the controller. A vehicle command is never retried. */
 class SessionRepository(private val api: AccountApi, private val storage: SessionStorage) {
-    private val statusReports=mutableMapOf<String,String>()
+    private val statusReports=mutableMapOf<String,VehicleStatus>()
     private val recentControls=mutableMapOf<String,String>()
     private var active: SavedAccount? = null
     private var available: List<Vehicle> = emptyList()
@@ -35,13 +35,14 @@ class SessionRepository(private val api: AccountApi, private val storage: Sessio
         if(selected!=saved.selectedVin || current.pins!=saved.pins || current.binding?.id!=saved.binding?.id || current.binding?.enabled!=saved.binding?.enabled || unsupported!=saved.unsupportedTelemetry) storage.write(current)
         telemetry.keys.retainAll(vehicles.map {it.vin}.toSet())
         recentControls.keys.retainAll(vehicles.map {it.vin}.toSet())
+        statusReports.keys.retainAll(vehicles.map {it.vin}.toSet())
         unsupportedTelemetry.retainAll(vehicles.map {it.vin}.toSet())
         active=current;available=vehicles
         return info(restored,silent)
     }
     private fun info(restored: Boolean=true, silent: Boolean=false): SessionInfo {
         val saved=active ?: throw ApiFailure(null,"请先登录")
-        return SessionInfo(available.size,saved.session.createdAt,restored,silent,available,saved.selectedVin,saved.pins.containsKey(saved.selectedVin),saved.binding,saved.pins.keys,telemetry.toMap(),unsupportedTelemetry.toSet(),saved.shutdownOnLock).also {it.selectedControlMessage=recentControls[saved.selectedVin];it.statusProbe=statusReports[saved.selectedVin]}
+        return SessionInfo(available.size,saved.session.createdAt,restored,silent,available,saved.selectedVin,saved.pins.containsKey(saved.selectedVin),saved.binding,saved.pins.keys,telemetry.toMap(),unsupportedTelemetry.toSet(),saved.shutdownOnLock).also {it.selectedControlMessage=recentControls[saved.selectedVin];it.vehicleStatus=statusReports[saved.selectedVin]}
     }
     @Synchronized fun login(config: AccountConfig): SessionInfo {
         telemetry.clear();unsupportedTelemetry.clear();recentControls.clear();statusReports.clear()
@@ -77,15 +78,30 @@ class SessionRepository(private val api: AccountApi, private val storage: Sessio
         if(!Regex("[A-HJ-NPR-Z0-9]{17}").matches(vin)) throw ApiFailure(null,"车辆 VIN 无效")
         return saved to vehicle
     }
-    @Synchronized fun probeVehicleStatus(vin: String): SessionInfo {
-        val (saved,vehicle)=refreshed(vin)
-        val identity=if(vehicle.shared) "授权账号（identifierType=1）" else "车主账号（identifierType=0）"
-        statusReports.remove(vin)
-        try {statusReports[vin]=identity+"\n"+api.vehicleStatus(saved.config,saved.session,vehicle)}
-        catch(e: Exception) {
-            statusReports[vin]=identity+"\n"+(if(e is ApiFailure) e.label+(e.code?.let {"（代码 $it）"} ?: "") else "网络请求或响应处理失败")
-            throw e
+    /** Healthy status requests reuse the active session; retry only a read after explicit expiry. */
+    private fun readStatus(vin: String): VehicleStatus {
+        fun fetch(): VehicleStatus {
+            val saved=active ?: throw ApiFailure(null,"请先登录")
+            val vehicle=available.find {it.vin==vin} ?: throw ApiFailure(null,"车辆已不在账号列表中")
+            return api.fetchVehicleStatus(saved.config,saved.session,vehicle)
         }
+        return try {fetch()} catch(e: ApiFailure) {
+            if(!e.sessionExpired) throw e
+            restore() ?: throw ApiFailure(null,"请先登录")
+            fetch() // One read-only retry. Never retries a vehicle command.
+        }
+    }
+    @Synchronized fun refreshVehicleStatus(vin: String): SessionInfo {
+        val saved=active ?: throw ApiFailure(null,"请先登录")
+        if(saved.selectedVin!=vin) throw ApiFailure(null,"车辆选择已改变，请重新操作")
+        statusReports[vin]=try {val next=readStatus(vin);VehicleStatus(next.report,next.vehicleError,next.hvac,statusReports[vin]?.notBefore)}
+            catch(e: Exception) {VehicleStatus(vehicleError=(e as? ApiFailure)?.let {it.label+(it.code?.let {code -> "（代码 $code）"} ?: "")} ?: "网络请求失败")}
+        return info()
+    }
+    /** A status refresh cannot change the result of an already sent command. */
+    @Synchronized fun refreshAfterControl(vin: String,requestedAt: Long): SessionInfo {
+        statusReports[vin]=try {val next=readStatus(vin);VehicleStatus(next.report,next.vehicleError,next.hvac,requestedAt)}
+            catch(e: Exception) {VehicleStatus(vehicleError="状态更新失败，请手动刷新",notBefore=requestedAt)}
         return info()
     }
     @Synchronized fun refreshTelemetry(vin: String): SessionInfo {

@@ -5,7 +5,7 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
-class VehicleStatusProbeTest {
+class VehicleStatusApiTest {
     private val config=AccountConfig("synthetic-account","synthetic-password")
     private val session=Session("synthetic-user","synthetic-super","synthetic-sign","synthetic-content",1L)
     private val vehicle=Vehicle("L0000000000000001","","","",true)
@@ -29,22 +29,23 @@ class VehicleStatusProbeTest {
         val api=BydApi(pause={}) {path,outer ->
             paths.add(path);assertEquals(1,JSONObject(outer).getInt("identifierType"))
             assertEquals(vehicle.vin,inner(outer).getString("vin"));assertFalse(inner(outer).has("commandPwd"))
-            if(path.endsWith("Request")) envelope(JSONObject().put("requestSerial","serial1").put("totalMileage",100).put("leftFrontTirepressure",2.5))
-            else {assertEquals("serial1",inner(outer).getString("requestSerial"));envelope(locked(System.currentTimeMillis()))}
+            if(path.endsWith("getStatusNow")) envelope(JSONObject())
+            else if(path.endsWith("Request")) envelope(JSONObject().put("requestSerial","serial1").put("totalMileage",100).put("leftFrontTirepressure",2.5))
+            else {assertEquals("serial1",inner(outer).getString("requestSerial"));envelope(locked(System.currentTimeMillis()).put("trunkLid",0).put("powerGear",1))}
         }
-        assertTrue(api.vehicleStatus(config,session,vehicle).contains("全部锁定"))
+        assertTrue(api.fetchVehicleStatus(config,session,vehicle).describe().contains("全部锁定"))
         assertEquals(listOf("/vehicleInfo/vehicle/vehicleRealTimeRequest","/vehicleInfo/vehicle/vehicleRealTimeResult"),paths)
     }
     @Test fun realNameRejectionPreservedAndNoPollingOrControlIsSent() {
         var count=0
         val api=BydApi(pause={}) {_,outer -> count++;assertEquals(1,JSONObject(outer).getInt("identifierType"));JSONObject().put("code",240).put("message","被授权账号需要实名认证 synthetic-account synthetic-content")}
-        val error=assertThrows(ApiFailure::class.java) {api.vehicleStatus(config,session,vehicle)}
-        assertEquals("240",error.code);assertTrue(error.label.contains("需要实名认证"))
-        assertFalse(error.label.contains(config.username));assertFalse(error.label.contains(session.encryToken));assertEquals(1,count)
+        val text=api.fetchVehicleStatus(config,session,vehicle).describe()
+        assertTrue(text.contains("240"));assertTrue(text.contains("需要实名认证"))
+        assertFalse(text.contains(config.username));assertFalse(text.contains(session.encryToken));assertEquals(1,count)
     }
     @Test fun emptyReportsStopAfterThreeResultQueries() {
         var count=0
         val api=BydApi(pause={}) {_,_ -> count++;envelope(JSONObject().put("requestSerial","serial1"))}
-        assertTrue(api.vehicleStatus(config,session,vehicle).contains("未知"));assertEquals(4,count)
+        assertTrue(api.fetchVehicleStatus(config,session,vehicle).describe().contains("未知"));assertEquals(4,count)
     }
 }

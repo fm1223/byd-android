@@ -116,17 +116,18 @@ class SessionRepository(private val api: AccountApi, private val storage: Sessio
     }
     private fun sendCommands(saved: SavedAccount,vehicle: Vehicle,pin: String,action: DoorAction,progress: (String)->Unit): SessionInfo {
         try {
-        val first=api.executeControl(saved.config,saved.session,vehicle,pin,action,progress)
         val combined=action==DoorAction.LOCK && vehicle.vin in saved.shutdownOnLock
+        val firstAction=if(combined) DoorAction.SHUTDOWN else action
+        val first=api.executeControl(saved.config,saved.session,vehicle,pin,firstAction,progress)
         var second: ControlReceipt?=null
         if(combined && first.outcome!=RemoteOutcome.FAILURE) {
-            progress(first.describe(action)+"\n熄火：正在发送请求")
-            try {second=api.executeControl(saved.config,saved.session,vehicle,pin,DoorAction.SHUTDOWN) {progress(first.describe(action)+"\n"+it)}}
+            progress(first.describe(firstAction)+"\n锁车：正在发送请求")
+            try {second=api.executeControl(saved.config,saved.session,vehicle,pin,DoorAction.LOCK) {progress(first.describe(firstAction)+"\n"+it)}}
             catch(e: Exception) {
-                throw ApiFailure((e as? ApiFailure)?.code,first.describe(action)+"；熄火未完成或结果未知："+((e as? ApiFailure)?.label ?: "请求异常")+"。未自动重试")
+                throw ApiFailure((e as? ApiFailure)?.code,first.describe(firstAction)+"；锁车未完成或结果未知："+((e as? ApiFailure)?.label ?: "请求异常")+"。未自动重试")
             }
         }
-        val message=first.describe(action)+(if(second!=null) "\n"+second!!.describe(DoorAction.SHUTDOWN) else if(combined) "\n熄火：未发送（锁车执行失败）" else "")
+        val message=first.describe(firstAction)+(if(second!=null) "\n"+second!!.describe(DoorAction.LOCK) else if(combined) "\n锁车：未发送（熄火执行失败）" else "")
         recentControls[vehicle.vin]=message
         return info().also {it.controlMessage=message}
         } catch(e: Exception) {

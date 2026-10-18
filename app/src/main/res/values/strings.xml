@@ -79,7 +79,7 @@
     <string name="shutdown_hint">发送熄火请求（中国区关闭空调命令）；请以车辆实际响应为准。</string>
     <string name="vehicle_control_preferences">车辆控制偏好</string>
     <string name="shutdown_on_lock">锁车时一并熄火</string>
-    <string name="shutdown_on_lock_hint">仅对当前车辆生效，适用于手动锁车和巴法云 off 指令。先发送锁车，再发送熄火；请求不会自动重试。</string>
+    <string name="shutdown_on_lock_hint">仅对当前车辆生效，适用于手动锁车和巴法云 off 指令。先发送熄火，再发送锁车；请求不会自动重试。</string>
 <string name="latest_control_result">最近一次操作</string>
  <string name="result_notification_settings">操作结果通知设置</string>
 </resources>

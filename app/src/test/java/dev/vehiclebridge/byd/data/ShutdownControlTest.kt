@@ -37,12 +37,12 @@ class ShutdownControlTest {
         val repo=SessionRepository(api,store);repo.restore()
         return Triple(repo,api,store)
     }
-    @Test fun confirmedLockFailureSkipsShutdownAndReportsBothSteps() {
+    @Test fun confirmedShutdownFailureSkipsLockAndReportsBothSteps() {
         val (repo,api,_)=fixture(true);api.outcome=RemoteOutcome.FAILURE
         val result=repo.sendDoor(vin,DoorAction.LOCK)
-        assertEquals(listOf(DoorAction.LOCK),api.commands)
-        assertTrue(result.controlMessage!!.contains("锁车：服务器报告执行失败"))
-        assertTrue(result.controlMessage!!.contains("熄火：未发送"))
+        assertEquals(listOf(DoorAction.SHUTDOWN),api.commands)
+        assertTrue(result.controlMessage!!.contains("熄火：服务器报告执行失败"))
+        assertTrue(result.controlMessage!!.contains("锁车：未发送"))
     }
     @Test fun recentResultsBelongToVehicleAndSurviveTabLikeSnapshots() {
         val (repo,api,_)=fixture();api.outcome=RemoteOutcome.SUCCESS
@@ -60,19 +60,27 @@ class ShutdownControlTest {
     @Test fun combinedLockSendsInOrderAndReportsRequests() {
         val (repo,api,_)=fixture(true)
         val result=repo.sendDoor(vin,DoorAction.LOCK)
-        assertEquals(listOf(DoorAction.LOCK,DoorAction.SHUTDOWN),api.commands)
+        assertEquals(listOf(DoorAction.SHUTDOWN,DoorAction.LOCK),api.commands)
         assertTrue(result.controlMessage!!.contains("锁车：请求已发送") && result.controlMessage!!.contains("熄火：请求已发送"))
     }
-    @Test fun failedLockNeverSendsShutdown() {
-        val (repo,api,_)=fixture(true);api.fail=DoorAction.LOCK
-        assertThrows(ApiFailure::class.java) {repo.sendDoor(vin,DoorAction.LOCK)}
-        assertEquals(listOf(DoorAction.LOCK),api.commands)
+    @Test fun unknownShutdownResultStillLocksWithoutRetryAndKeepsProgressInOrder() {
+        val (repo,api,_)=fixture(true);api.outcome=RemoteOutcome.UNKNOWN
+        val progress=mutableListOf<String>()
+        val result=repo.sendDoor(vin,DoorAction.LOCK,progress=progress::add)
+        assertEquals(listOf(DoorAction.SHUTDOWN,DoorAction.LOCK),api.commands)
+        assertEquals("熄火：请求已发送，结果未知\n锁车：请求已发送，结果未知",result.controlMessage)
+        assertTrue(progress.any {it.startsWith("熄火：") && it.endsWith("锁车：正在发送请求")})
     }
-    @Test fun failedShutdownPreservesPartialResultAndNeverRetries() {
+    @Test fun failedShutdownNeverSendsLock() {
         val (repo,api,_)=fixture(true);api.fail=DoorAction.SHUTDOWN
+        assertThrows(ApiFailure::class.java) {repo.sendDoor(vin,DoorAction.LOCK)}
+        assertEquals(listOf(DoorAction.SHUTDOWN),api.commands)
+    }
+    @Test fun failedLockPreservesShutdownResultAndNeverRetries() {
+        val (repo,api,_)=fixture(true);api.fail=DoorAction.LOCK
         val error=assertThrows(ApiFailure::class.java) {repo.sendDoor(vin,DoorAction.LOCK)}
-        assertTrue(error.label.contains("锁车：请求已发送"));assertEquals("240",error.code)
-        assertEquals(listOf(DoorAction.LOCK,DoorAction.SHUTDOWN),api.commands)
+        assertTrue(error.label.contains("熄火：请求已发送"));assertEquals("240",error.code)
+        assertEquals(listOf(DoorAction.SHUTDOWN,DoorAction.LOCK),api.commands)
     }
     @Test fun preferenceSurvivesRestoreAndDoesNotApplyToUnlockOrOtherVehicles() {
         val (repo,api,store)=fixture();repo.setShutdownOnLock(vin,true);repo.restore()
@@ -85,6 +93,6 @@ class ShutdownControlTest {
         val binding=BemfaBinding("0123456789abcdef0123456789abcdef","testtopic",vin)
         repo.saveBinding(binding);repo.enableBinding();repo.select(other)
         repo.sendBoundDoor(binding.id,DoorAction.LOCK)
-        assertEquals(listOf(DoorAction.LOCK,DoorAction.SHUTDOWN),api.commands)
+        assertEquals(listOf(DoorAction.SHUTDOWN,DoorAction.LOCK),api.commands)
     }
 }

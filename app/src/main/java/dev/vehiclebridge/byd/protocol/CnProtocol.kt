@@ -133,6 +133,18 @@ class CnProtocol(private val config: AccountConfig, private val clock: () -> Lon
         return try {JSONObject(CnCrypto.decryptContent(payload,CnCrypto.md5Upper(session.encryToken)))}
             catch(_:Exception) {throw ApiFailure(null,"车辆数据解析失败")}
     }
+    fun statusResponse(outer: JSONObject,session: Session): JSONObject {
+        fun reject(value: JSONObject): Nothing {
+            var message=loginFailureMessage(value)
+            listOf(session.signToken,session.encryToken,session.userId,session.superId ?: "").filter {it.length>=6}.forEach {message=message.replace(it,"[已隐藏]")}
+            throw ApiFailure(value.optString("code").takeIf {Regex("[0-9]{1,6}").matches(it)},"车辆状态读取失败："+message)
+        }
+        if(outer.optString("code") !in setOf("0","22")) reject(outer)
+        if(outer.optString("respondData").isBlank()) return JSONObject()
+        val data=try {JSONObject(CnCrypto.decryptContent(outer.getString("respondData"),CnCrypto.md5Upper(session.encryToken)))} catch(_:Exception) {throw ApiFailure(null,"车辆状态响应解析失败")}
+        if(data.has("code") && data.optString("code") !in setOf("0","200","22")) reject(data)
+        return data
+    }
     fun controlResultRequest(session: Session,vehicle: Vehicle,serial: String,action: DoorAction): String {
         require(Regex("[A-Za-z0-9_-]{1,128}").matches(serial))
         val now=clock()

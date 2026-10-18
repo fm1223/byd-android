@@ -34,7 +34,7 @@ class AuthController private constructor(context: Context) {
         executor.execute {
             try {
                 val result=action()
-                main.post {pending--;update(AuthState(pending>0,result,result?.controlMessage ?: successMessage ?: when {result==null -> "请输入账号密码登录";result.silentlyLoggedIn -> "会话已通过静默登录恢复";result.restored -> "已复用保存的会话";else -> "登录成功，信息已加密保存"}));complete?.invoke(result?.controlMessage ?: successMessage ?: "已完成")}
+                main.post {pending--;update(AuthState(pending>0,result,result?.statusProbe?.takeIf {message=="正在验证车辆状态 API"} ?: result?.controlMessage ?: successMessage ?: when {result==null -> "请输入账号密码登录";result.silentlyLoggedIn -> "会话已通过静默登录恢复";result.restored -> "已复用保存的会话";else -> "登录成功，信息已加密保存"}));complete?.invoke(result?.controlMessage ?: successMessage ?: "已完成")}
             } catch(e:Exception) {
                 val failure=if(e is ApiFailure) e.label + (e.code?.let {"（代码 $it）"} ?: "") else "操作未完成，请重试"
                 val latest=repository.snapshot() ?: previous
@@ -48,6 +48,7 @@ class AuthController private constructor(context: Context) {
     fun select(vin: String) = run("正在选择车辆","已选择车辆") {repository.select(vin)}
     fun savePin(vin: String,pin: String) = run("正在验证操作 PIN","PIN 验证通过，已加密保存") {repository.savePin(vin,pin)}
     fun removePin(vin: String) = run("正在移除 PIN","已移除保存的 PIN") {repository.removePin(vin)}
+    fun probeVehicleStatus(vin: String) = run("正在验证车辆状态 API","车辆状态验证完成") {repository.probeVehicleStatus(vin)}
     fun refreshTelemetry(vin: String) = run("正在刷新车辆数据","车辆数据已更新") {repository.refreshTelemetry(vin)}
     fun setShutdownOnLock(vin: String,enabled: Boolean) = run("正在保存锁车偏好","锁车偏好已保存") {repository.setShutdownOnLock(vin,enabled)}
     private fun controlProgress(text: String) {main.post {if(pending>0) update(AuthState(true,state.info,text))}}

@@ -9,12 +9,14 @@ class SavedAccount(val config: AccountConfig, val session: Session, val selected
 interface SessionStorage { fun read(): SavedAccount?; fun write(value: SavedAccount); fun clear() }
 class SessionInfo(val vehicleCount: Int, val createdAt: Long, val restored: Boolean, val silentlyLoggedIn: Boolean,
     val vehicles: List<Vehicle> = emptyList(), val selectedVin: String? = null, val hasPin: Boolean = false, val binding: BemfaBinding? = null, val pinVins: Set<String> = emptySet(), val telemetry: Map<String,VehicleTelemetry> = emptyMap(), val unsupportedTelemetry: Set<String> = emptySet(), val shutdownOnLock: Set<String> = emptySet()) {
+    var statusProbe: String? = null; internal set
     var controlMessage: String? = null; internal set
     var selectedControlMessage: String? = null; internal set
     val selected get() = vehicles.find { it.vin==selectedVin }
 }
 /** Serialized by the controller. A vehicle command is never retried. */
 class SessionRepository(private val api: AccountApi, private val storage: SessionStorage) {
+    private val statusReports=mutableMapOf<String,String>()
     private val recentControls=mutableMapOf<String,String>()
     private var active: SavedAccount? = null
     private var available: List<Vehicle> = emptyList()
@@ -39,10 +41,10 @@ class SessionRepository(private val api: AccountApi, private val storage: Sessio
     }
     private fun info(restored: Boolean=true, silent: Boolean=false): SessionInfo {
         val saved=active ?: throw ApiFailure(null,"请先登录")
-        return SessionInfo(available.size,saved.session.createdAt,restored,silent,available,saved.selectedVin,saved.pins.containsKey(saved.selectedVin),saved.binding,saved.pins.keys,telemetry.toMap(),unsupportedTelemetry.toSet(),saved.shutdownOnLock).also {it.selectedControlMessage=recentControls[saved.selectedVin]}
+        return SessionInfo(available.size,saved.session.createdAt,restored,silent,available,saved.selectedVin,saved.pins.containsKey(saved.selectedVin),saved.binding,saved.pins.keys,telemetry.toMap(),unsupportedTelemetry.toSet(),saved.shutdownOnLock).also {it.selectedControlMessage=recentControls[saved.selectedVin];it.statusProbe=statusReports[saved.selectedVin]}
     }
     @Synchronized fun login(config: AccountConfig): SessionInfo {
-        telemetry.clear();unsupportedTelemetry.clear();recentControls.clear()
+        telemetry.clear();unsupportedTelemetry.clear();recentControls.clear();statusReports.clear()
         val session=api.login(config);val vehicles=api.vehicles(config,session)
         val saved=SavedAccount(config,session,vehicles.singleOrNull()?.vin)
         storage.write(saved)
@@ -74,6 +76,17 @@ class SessionRepository(private val api: AccountApi, private val storage: Sessio
         if(saved.selectedVin!=vin) throw ApiFailure(null,"车辆选择已改变，请重新操作")
         if(!Regex("[A-HJ-NPR-Z0-9]{17}").matches(vin)) throw ApiFailure(null,"车辆 VIN 无效")
         return saved to vehicle
+    }
+    @Synchronized fun probeVehicleStatus(vin: String): SessionInfo {
+        val (saved,vehicle)=refreshed(vin)
+        val identity=if(vehicle.shared) "授权账号（identifierType=1）" else "车主账号（identifierType=0）"
+        statusReports.remove(vin)
+        try {statusReports[vin]=identity+"\n"+api.vehicleStatus(saved.config,saved.session,vehicle)}
+        catch(e: Exception) {
+            statusReports[vin]=identity+"\n"+(if(e is ApiFailure) e.label+(e.code?.let {"（代码 $it）"} ?: "") else "网络请求或响应处理失败")
+            throw e
+        }
+        return info()
     }
     @Synchronized fun refreshTelemetry(vin: String): SessionInfo {
         if(vin in unsupportedTelemetry) throw ApiFailure("1001","该车辆不支持车辆数据接口，已隐藏")
@@ -200,5 +213,5 @@ class SessionRepository(private val api: AccountApi, private val storage: Sessio
         return sendCommands(saved,vehicle,pin,action,progress)
     }
     @Synchronized fun snapshot(): SessionInfo? = active?.let {info()}
-    @Synchronized fun logout() {storage.clear();active=null;available=emptyList();telemetry.clear();unsupportedTelemetry.clear()}
+    @Synchronized fun logout() {storage.clear();active=null;available=emptyList();telemetry.clear();unsupportedTelemetry.clear();statusReports.clear()}
 }

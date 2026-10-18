@@ -92,6 +92,7 @@ class MainActivity: Activity() {
         binding.removePinButton.setOnClickListener {controller.state.info?.selected?.let {controller.removePin(it.vin)}}
         binding.unlockButton.setOnClickListener {sendDoor(DoorAction.UNLOCK)}
         binding.lockButton.setOnClickListener {sendDoor(DoorAction.LOCK)}
+        binding.verifyVehicleStatus.setOnClickListener {controller.state.info?.selected?.let {controller.probeVehicleStatus(it.vin)}}
         binding.shutdownButton.setOnClickListener {sendDoor(DoorAction.SHUTDOWN)}
         binding.openTrunkButton.setOnClickListener {sendDoor(DoorAction.OPEN_TRUNK)}
         binding.closeTrunkButton.setOnClickListener {sendDoor(DoorAction.CLOSE_TRUNK)}
@@ -190,6 +191,12 @@ class MainActivity: Activity() {
         binding.pinPrompt.text=if(info?.hasPin==true) "PIN 已保存 · 可直接操作" else "未保存 PIN · 点击前往设置"
         binding.bridgeTarget.text=info?.binding?.let {value -> "已配置 "+value.devices.size+" 个设备（启用 "+value.activeDevices.size+" 个）\n"+value.devices.joinToString("、") {it.name+" · "+it.function.label}} ?: "添加巴法云设备，分别控制车锁或后备箱"
         imageLoader.load(vehicle?.imageUrl ?: "")
+        binding.verifyVehicleStatus.isEnabled=!state.busy && vehicle!=null
+        binding.vehicleStatusResult.text=info?.statusProbe ?: getString(R.string.vehicle_status_note)
+        if(!state.busy && vehicle!=null && intent.getBooleanExtra("verify_vehicle_status",false) && applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            intent.removeExtra("verify_vehicle_status")
+            binding.root.post {controller.probeVehicleStatus(vehicle.vin)}
+        }
         binding.telemetryCard.visibility=View.GONE
         val report=vehicle?.let {info.telemetry[it.vin] ?: it.summary}
         binding.telemetryValues.text=report?.rows?.takeIf {it.isNotEmpty()}?.joinToString("\n") {it.first+"     "+it.second} ?: "总里程、胎压、能耗：未提供"

@@ -188,7 +188,7 @@ class MainActivity: Activity() {
         binding.vehicleVin.text=vehicle?.let {"VIN  "+it.maskedVin} ?: ""
         binding.pinVehicle.text=vehicle?.let {"当前车辆："+it.displayName} ?: "请先在车辆页选择车辆"
         binding.pinPrompt.text=if(info?.hasPin==true) "PIN 已保存 · 可直接操作" else "未保存 PIN · 点击前往设置"
-        binding.bridgeTarget.text=info?.binding?.let {value -> "绑定车辆："+(vehicles.find {it.vin==value.vin}?.displayName ?: "车辆不可用")+"\ntopic："+value.topic} ?: "绑定巴法云设备，使用 on / off 控制车锁"
+        binding.bridgeTarget.text=info?.binding?.let {value -> "已配置 "+value.devices.size+" 个设备（启用 "+value.activeDevices.size+" 个）\n"+value.devices.joinToString("、") {it.name+" · "+it.function.label}} ?: "添加巴法云设备，分别控制车锁或后备箱"
         imageLoader.load(vehicle?.imageUrl ?: "")
         binding.telemetryCard.visibility=View.GONE
         val report=vehicle?.let {info.telemetry[it.vin] ?: it.summary}

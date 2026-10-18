@@ -5,6 +5,7 @@
                 <TextView android:id="@+id/connectionStatus" style="@style/Caption" android:layout_marginTop="0dp" android:accessibilityLiveRegion="polite" />
                 <Switch android:id="@+id/bridgeEnabled" android:layout_width="match_parent" android:layout_height="56dp" android:text="@string/ui_label_34" android:textColor="@color/ink" android:saveEnabled="false" android:layout_marginTop="12dp" />
                 <TextView android:id="@+id/savedBindingSummary" style="@style/Body" android:layout_marginTop="12dp" />
+                <LinearLayout android:id="@+id/deviceList" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="12dp" />
                 <Button android:id="@+id/editBindingButton" style="@style/ActionButton" android:text="@string/ui_label_35" android:layout_marginTop="12dp" />
                 <TextView android:id="@+id/operationStatus" style="@style/Caption" android:layout_marginTop="8dp" android:accessibilityLiveRegion="polite" />
                 <ProgressBar android:id="@+id/bridgeProgress" android:layout_width="32dp" android:layout_height="32dp" android:visibility="gone" android:layout_marginTop="12dp" />
@@ -13,12 +14,18 @@
                 <LinearLayout style="@style/Card">
                     <TextView style="@style/Section" android:text="@string/ui_label_36" android:layout_marginTop="0dp" android:layout_marginBottom="0dp" />
                     <TextView style="@style/Caption" android:text="@string/ui_label_37" android:layout_marginTop="8dp" />
+                    <EditText android:id="@+id/deviceName" style="@style/Field" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/device_binding_name" android:inputType="text" android:singleLine="true" android:maxLength="40" />
+                    <TextView style="@style/Caption" android:text="@string/device_binding_function" android:layout_marginTop="8dp" />
+                    <Spinner android:id="@+id/deviceFunction" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="12dp" />
+                    <TextView android:id="@+id/functionHint" style="@style/Caption" android:layout_marginTop="8dp" />
                     <TextView style="@style/Caption" android:text="@string/bemfa_bind_vehicle" android:layout_marginTop="8dp" />
                     <Spinner android:id="@+id/boundVehicle" android:layout_width="match_parent" android:layout_height="48dp" android:saveEnabled="false" android:layout_marginTop="12dp" />
                     <EditText android:id="@+id/bemfaKey" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/bemfa_key" android:inputType="textPassword" android:singleLine="true" android:maxLength="32" android:saveEnabled="false" android:importantForAutofill="no" android:layout_marginTop="12dp" style="@style/Field" />
                     <EditText android:id="@+id/bemfaTopic" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/bemfa_topic" android:inputType="textVisiblePassword" android:singleLine="true" android:maxLength="64" android:layout_marginTop="12dp" style="@style/Field" />
                     <TextView style="@style/Caption" android:text="@string/bemfa_defaults" android:layout_marginTop="8dp" />
+                    <TextView style="@style/Caption" android:text="@string/shared_bemfa_key_note" android:layout_marginTop="8dp" />
                     <Button android:id="@+id/saveBindingButton" style="@style/PrimaryButton" android:text="@string/ui_label_38" android:layout_marginTop="12dp" />
+                    <Button android:id="@+id/cancelDeviceEdit" style="@style/ActionButton" android:text="@android:string/cancel" android:layout_marginTop="12dp" />
                 </LinearLayout>
             </LinearLayout>
             <LinearLayout style="@style/Card">

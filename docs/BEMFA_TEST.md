@@ -1,3 +1,5 @@
+> 此文件保留旧版单设备阶段记录。当前多设备配置请阅读 README.md 和 docs/MULTI_DEVICE_BINDING.md。
+
 # 巴法云与后台联动（0.4.5-dev）
 
 ## 配置与使用

@@ -5,7 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.AtomicFile
 import dev.vehiclebridge.byd.protocol.*
-import dev.vehiclebridge.byd.bridge.BemfaBinding
+import dev.vehiclebridge.byd.bridge.BemfaBindingCodec
 import org.json.JSONObject
 import java.io.File
 import java.security.KeyStore
@@ -38,7 +38,7 @@ class AndroidSessionStore private constructor(context: Context): SessionStorage 
             val pinObject=record.optJSONObject("pins") ?: JSONObject()
             val pins=pinObject.keys().asSequence().associateWith {pinObject.getString(it)}
             require(pins.values.all {Regex("[0-9]{6}").matches(it)})
-            val binding=record.optJSONObject("bemfa")?.let {BemfaBinding(it.getString("key"),it.getString("topic"),it.getString("vin"),it.optBoolean("enabled"),it.getString("id"))}
+            val binding=record.optJSONObject("bemfa")?.let {BemfaBindingCodec.decode(it)}
             val unavailable=record.optJSONArray("unsupportedTelemetry")
             val unsupported=if(unavailable==null) emptySet() else (0 until unavailable.length()).map {unavailable.getString(it)}.toSet()
             require(unsupported.all {Regex("[A-HJ-NPR-Z0-9]{17}").matches(it)})
@@ -50,7 +50,7 @@ class AndroidSessionStore private constructor(context: Context): SessionStorage 
     }
     @Synchronized override fun write(value: SavedAccount) {
         val config=value.config;val session=value.session
-        val plain=WireJson.encode(linkedMapOf("shutdownOnLock" to value.shutdownOnLock.toList(),"unsupportedTelemetry" to value.unsupportedTelemetry.toList(),"bemfa" to value.binding?.let {linkedMapOf("key" to it.key,"topic" to it.topic,"vin" to it.vin,"enabled" to it.enabled,"id" to it.id)},"selectedVin" to value.selectedVin,"pins" to value.pins,"baseUrl" to CnProtocol.BASE_URL,"account" to linkedMapOf("username" to config.username,"password" to config.password,"targetBrand" to config.targetBrand,"imeiMd5" to config.imeiMd5),"session" to linkedMapOf("userId" to session.userId,"superId" to session.superId,"signToken" to session.signToken,"encryToken" to session.encryToken,"createdAt" to session.createdAt)))
+        val plain=WireJson.encode(linkedMapOf("shutdownOnLock" to value.shutdownOnLock.toList(),"unsupportedTelemetry" to value.unsupportedTelemetry.toList(),"bemfa" to value.binding?.let {BemfaBindingCodec.encode(it)},"selectedVin" to value.selectedVin,"pins" to value.pins,"baseUrl" to CnProtocol.BASE_URL,"account" to linkedMapOf("username" to config.username,"password" to config.password,"targetBrand" to config.targetBrand,"imeiMd5" to config.imeiMd5),"session" to linkedMapOf("userId" to session.userId,"superId" to session.superId,"signToken" to session.signToken,"encryToken" to session.encryToken,"createdAt" to session.createdAt)))
         try {
             val encrypted=vault.seal(plain).toByteArray(Charsets.UTF_8)
             val stream=file.startWrite()

@@ -6,7 +6,7 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 /** MQTT transport only; it never publishes messages or sends vehicle requests. */
 internal class BemfaMqttClient(binding: BemfaBinding, uri: String = BemfaBinding.SERVER_URI) {
     init {java.util.logging.Logger.getLogger("org.eclipse.paho.client.mqttv3").level=java.util.logging.Level.OFF}
-    private val topic=binding.topic
+    private val topics=binding.activeDevices.map {it.topic}.toTypedArray()
     private val client=MqttAsyncClient(uri,binding.key,MemoryPersistence())
     val isConnected get() = client.isConnected
     fun connect(message: (String,ByteArray,Boolean,Boolean)->Unit,lost: ()->Unit) {
@@ -22,7 +22,7 @@ internal class BemfaMqttClient(binding: BemfaBinding, uri: String = BemfaBinding
             isAutomaticReconnect=false;connectionTimeout=15;keepAliveInterval=60
         }
         client.connect(options).waitForCompletion(20_000)
-        val subscribed=client.subscribe(topic,0)
+        val subscribed=client.subscribe(topics,IntArray(topics.size))
         subscribed.waitForCompletion(15_000)
         if(subscribed.grantedQos.any {it==128}) throw MqttException(128)
     }

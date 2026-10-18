@@ -28,7 +28,7 @@
  <string name="bemfa_key">巴法云用户私钥（32 位）</string>
  <string name="bemfa_topic">MQTT topic，例如 car002</string>
  <string name="bemfa_defaults">固定连接 mqtt.bemfa.com:9501（普通 MQTT，不加密）
-收到 on 解锁，收到 off 锁车。保存后需启动后台联动。</string>
+同一巴法云账号共用连接；每个 topic 按所选功能处理 on/off。</string>
  <string name="bemfa_save">保存设备绑定</string>
  <string name="bemfa_start">启动后台联动</string>
  <string name="bemfa_stop">停止后台联动</string>
@@ -73,7 +73,7 @@
  <string name="ui_label_34">启用后台联动</string>
  <string name="ui_label_35">修改设备绑定</string>
  <string name="ui_label_36">设备配置</string>
- <string name="ui_label_37">选择车辆并填写巴法云 topic，PIN 需先保存。</string>
+ <string name="ui_label_37">每个设备选择车辆与功能，并使用独立 topic。车辆 PIN 需先保存。</string>
  <string name="ui_label_38">保存设备绑定</string>
 <string name="telemetry_title">车辆数据</string><string name="telemetry_refresh">刷新车辆数据</string><string name="telemetry_hint">点击刷新获取云端数据；数据可能为车辆最近一次上报，当前不显示实时门锁状态。</string>    <string name="shutdown_action">熄火</string>
     <string name="shutdown_hint">发送熄火请求（中国区关闭空调命令）；请以车辆实际响应为准。</string>
@@ -85,4 +85,7 @@
  <string name="open_trunk_action">打开后备箱</string>
  <string name="close_trunk_action">关闭后备箱</string>
  <string name="trunk_hint">需车辆支持远程尾门控制；打开可能仅解锁或弹开，请以实际响应为准。</string>
+ <string name="device_binding_name">设备名称，例如车辆门锁、后备箱</string>
+ <string name="device_binding_function">控制功能</string>
+ <string name="shared_bemfa_key_note">所有设备共用一个巴法云账号。已保存私钥可留空沿用；修改私钥会应用到全部设备。修改配置后会重新连接。</string>
 </resources>

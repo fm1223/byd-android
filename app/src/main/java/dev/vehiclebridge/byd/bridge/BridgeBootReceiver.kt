@@ -12,7 +12,7 @@ class BridgeBootReceiver: BroadcastReceiver() {
         executor.execute {
             try {
                 val saved=AndroidSessionStore.get(context).read()
-                if(saved?.binding?.enabled==true && saved.pins.containsKey(saved.binding.vin)) BemfaService.start(context)
+                if(saved?.binding?.enabled==true && saved.binding.activeDevices.any {saved.pins.containsKey(it.vin)}) BemfaService.start(context)
             } catch(_:Exception) {} finally {pending.finish();executor.shutdown()}
         }
     }

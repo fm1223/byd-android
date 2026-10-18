@@ -52,4 +52,41 @@ class BemfaMqttClientTest {
             } finally {release.countDown();client.close();executor.shutdownNow()}
         }
     }
+
+    @Test fun oneConnectionSubscribesAllEnabledTopicsAndReceivesEachRoute() {
+        val devices=listOf(BemfaDevice("door001",binding.vin),BemfaDevice("trunk001",binding.vin,BemfaFunction.TRUNK),BemfaDevice("paused001",binding.vin,enabled=false))
+        val target=BemfaBinding(binding.key,"door001",binding.vin,true,devices=devices)
+        ServerSocket(0).use {server ->
+            server.soTimeout=5000
+            val executor=Executors.newSingleThreadExecutor();val release=CountDownLatch(1)
+            val broker=executor.submit {
+                server.accept().use {socket ->
+                    socket.soTimeout=5000
+                    val input=socket.getInputStream();val output=socket.getOutputStream()
+                    assertEquals(0x10,packet(input).first)
+                    output.write(byteArrayOf(0x20,2,0,0));output.flush()
+                    val subscription=packet(input);assertEquals(0x82,subscription.first)
+                    val data=DataInputStream(ByteArrayInputStream(subscription.second));val id=data.readUnsignedShort()
+                    val topics=mutableListOf<String>()
+                    while(data.available()>0) {topics.add(data.readUTF());assertEquals(0,data.readUnsignedByte())}
+                    assertEquals(listOf("door001","trunk001"),topics)
+                    output.write(byteArrayOf(0x90.toByte(),4,(id shr 8).toByte(),id.toByte(),0,0));output.flush()
+                    for(topic in topics) {
+                        val payload=ByteArrayOutputStream().apply {DataOutputStream(this).writeUTF(topic);write("off".toByteArray())}.toByteArray()
+                        output.write(byteArrayOf(0x30,payload.size.toByte())+payload);output.flush()
+                    }
+                    assertTrue(release.await(5,TimeUnit.SECONDS))
+                }
+            }
+            val received=LinkedBlockingQueue<String>()
+            val client=BemfaMqttClient(target,"tcp://127.0.0.1:"+server.localPort)
+            try {
+                client.connect({topic,payload,retained,duplicate ->
+                    assertEquals("off",String(payload));assertFalse(retained);assertFalse(duplicate);received.offer(topic)
+                },{})
+                assertEquals(setOf("door001","trunk001"),setOf(received.poll(5,TimeUnit.SECONDS),received.poll(5,TimeUnit.SECONDS)))
+                release.countDown();broker.get(5,TimeUnit.SECONDS)
+            } finally {release.countDown();client.close();executor.shutdownNow()}
+        }
+    }
 }

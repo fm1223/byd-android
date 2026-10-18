@@ -53,8 +53,11 @@ class AuthController private constructor(context: Context) {
     private fun controlProgress(text: String) {main.post {if(pending>0) update(AuthState(true,state.info,text))}}
     fun sendDoor(vin: String,action: DoorAction,pin: String?=null) = run("正在发送车辆请求","请求已发送，车辆实际状态请现场确认",complete={dev.vehiclebridge.byd.bridge.BridgeNotifications.result(appContext,it)}) {repository.sendDoor(vin,action,pin,::controlProgress)}
     fun saveBinding(binding: BemfaBinding) = run("正在保存设备绑定","绑定已保存，点击启动后台联动") {repository.saveBinding(binding)}
+    fun saveDevice(key: String,device: dev.vehiclebridge.byd.bridge.BemfaDevice,replacingId: String?) = run("正在保存设备","设备已保存") {repository.saveDevice(key,device,replacingId)}
+    fun removeDevice(id: String) = run("正在删除设备","设备已删除") {repository.removeDevice(id)}
+    fun setDeviceEnabled(id: String,enabled: Boolean) = run("正在更新设备","设备已更新") {repository.setDeviceEnabled(id,enabled)}
     fun enableBinding() = run("正在启动后台联动","后台联动已启用") {repository.enableBinding()}
-    fun dispatchBridge(id: String,action: DoorAction,complete: (String)->Unit) = run("正在执行巴法云指令","请求已发送，车辆实际状态请现场确认",{text -> dev.vehiclebridge.byd.bridge.BridgeNotifications.result(appContext,text);complete(text)}) {repository.sendBoundDoor(id,action,::controlProgress)}
+    fun dispatchBridge(id: String,action: DoorAction,configurationId: String?=null,complete: (String)->Unit) = run("正在执行巴法云指令","请求已发送，车辆实际状态请现场确认",{text -> dev.vehiclebridge.byd.bridge.BridgeNotifications.result(appContext,text);complete(text)}) {repository.sendBoundDoor(id,action,::controlProgress,configurationId)}
     fun stopBridge() {
         pending++
         update(AuthState(true,state.info,"正在停止后台联动"))

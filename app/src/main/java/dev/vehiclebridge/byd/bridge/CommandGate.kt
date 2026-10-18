@@ -5,7 +5,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 
 /** Drop unsafe deliveries instead of queuing commands to run later. */
-class CommandGate(private val topic: String, private val clock: ()->Long = System::nanoTime) {
+class CommandGate(private val topic: String, private val clock: ()->Long = System::nanoTime, private val function: BemfaFunction=BemfaFunction.DOOR) {
     private var ready=false
     private var busy=false
     private var lastAction: DoorAction?=null
@@ -16,7 +16,7 @@ class CommandGate(private val topic: String, private val clock: ()->Long = Syste
         if(!ready || busy || retained || duplicate || actualTopic!=topic || payload.size !in 2..3) return null
         val text=try {Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
             .decode(ByteBuffer.wrap(payload)).toString()} catch(_:Exception) {return null}
-        val action=when(text) {"on" -> DoorAction.UNLOCK;"off" -> DoorAction.LOCK;else -> return null}
+        val action=when(text) {"on" -> function.onAction;"off" -> function.offAction;else -> return null}
         val now=clock()
         if(action==lastAction && now-lastTime<3_000_000_000L) return null
         lastAction=action;lastTime=now;busy=true

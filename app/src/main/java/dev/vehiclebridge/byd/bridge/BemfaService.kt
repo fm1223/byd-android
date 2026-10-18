@@ -33,7 +33,8 @@ class BemfaService: Service() {
     private val closed=AtomicBoolean(false)
     @Volatile private var client: BemfaMqttClient?=null
     @Volatile private var binding: BemfaBinding?=null
-    @Volatile private var gate: CommandGate?=null
+    @Volatile private var gates: Map<String,CommandGate> = emptyMap()
+    private val commandBusy=AtomicBoolean(false)
     private var reconnect: ScheduledFuture<*>?=null
     private var retrySeconds=2L
     private lateinit var controller: AuthController
@@ -45,13 +46,13 @@ class BemfaService: Service() {
         override fun onAvailable(network: Network) {
             val previous=defaultNetwork;defaultNetwork=network
             if(previous!=null && previous!=network && !closed.get()) {
-                gate?.ready(false)
+                gates.values.forEach {it.ready(false)}
                 try {worker.execute {if(!closed.get()) {disconnectClient();status("网络切换，正在重新连接",BridgeConnection.CONNECTING);queueReconnect(0)}}} catch(_:RejectedExecutionException) {}
             } else queueReconnect(0)
         }
         override fun onLost(network: Network) {
             if(defaultNetwork!=network || closed.get()) return
-            defaultNetwork=null;gate?.ready(false)
+            defaultNetwork=null;gates.values.forEach {it.ready(false)}
             try {worker.execute {if(!closed.get()) {disconnectClient();status("网络断开，等待恢复",BridgeConnection.DISCONNECTED);queueReconnect(retrySeconds)}}} catch(_:RejectedExecutionException) {}
         }
     }
@@ -91,10 +92,10 @@ class BemfaService: Service() {
         worker.execute {
             if(closed.get()) return@execute
             val saved=try {AndroidSessionStore.get(this).read()} catch(_:Exception) {null}
-            val next=saved?.binding?.takeIf {it.enabled && saved.pins.containsKey(it.vin)}
+            val next=saved?.binding?.takeIf {it.enabled && it.activeDevices.isNotEmpty() && it.activeDevices.all {device -> saved.pins.containsKey(device.vin)}}
             if(next==null) {main.post {stopSelf()};return@execute}
             if(binding?.id!=next.id) {
-                disconnect();binding=next;gate=CommandGate(next.topic);retrySeconds=2
+                disconnect();binding=next;gates=next.activeDevices.associate {it.topic to CommandGate(it.topic,function=it.function)};retrySeconds=2
                 connect()
             } else if(client?.isConnected!=true && reconnect==null) queueReconnect(0)
         }
@@ -102,38 +103,40 @@ class BemfaService: Service() {
     private fun connect() {
         if(closed.get()) return
         val target=binding ?: return
-        gate?.ready(false)
+        gates.values.forEach {it.ready(false)}
         disconnectClient()
         status("正在连接巴法云",BridgeConnection.CONNECTING)
         try {
             val current=BemfaMqttClient(target)
             client=current
-            current.connect(message={topic,payload,retained,duplicate ->
+            current.connect(message=message@{topic,payload,retained,duplicate ->
                 if(!closed.get() && client===current) {
-                    val activeGate=gate
-                    val action=activeGate?.accept(topic,payload,retained,duplicate)
+                    val device=target.activeDevices.find {it.topic==topic} ?: return@message
+                    val activeGate=gates[topic] ?: return@message
+                    if(!commandBusy.compareAndSet(false,true)) return@message
+                    val action=activeGate.accept(topic,payload,retained,duplicate)
                     if(action!=null) {
                         synchronized(wakeLock) {wakeLock.acquire(240_000L)}
                         main.post {
-                            if(closed.get() || binding?.id!=target.id) {activeGate.release();releaseWakeLock()}
+                            if(closed.get() || binding?.id!=target.id) {activeGate.release();commandBusy.set(false);releaseWakeLock()}
                             else {
                                 status("正在执行设备指令")
-                                controller.dispatchBridge(target.id,action) {result ->
+                                controller.dispatchBridge(device.id,action,target.id) {result ->
                                     activeGate.release();releaseWakeLock();status(result)
                                 }
                             }
                         }
-                    }
+                    } else commandBusy.set(false)
                 }
             },lost={
                 if(!closed.get() && client===current) {
-                    gate?.ready(false);status("连接断开，等待自动重连",BridgeConnection.DISCONNECTED);queueReconnect(retrySeconds)
+                    gates.values.forEach {it.ready(false)};status("连接断开，等待自动重连",BridgeConnection.DISCONNECTED);queueReconnect(retrySeconds)
                 }
             })
             if(closed.get() || client!==current) return
-            retrySeconds=2;gate?.ready(true);status("已连接，等待 on／off 指令",BridgeConnection.CONNECTED)
+            retrySeconds=2;gates.values.forEach {it.ready(true)};status("已连接 "+target.activeDevices.size+" 个设备，等待 on／off 指令",BridgeConnection.CONNECTED)
         } catch(e:Exception) {
-            gate?.ready(false);disconnectClient()
+            gates.values.forEach {it.ready(false)};disconnectClient()
             val code=(e as? MqttException)?.reasonCode
             status("连接／订阅失败"+(code?.let {"（代码 $it）"} ?: "")+"，等待重连",BridgeConnection.DISCONNECTED)
             queueReconnect(retrySeconds)
@@ -155,10 +158,10 @@ class BemfaService: Service() {
             old.close()
         }
     }
-    private fun disconnect() {gate?.ready(false);reconnect?.cancel(false);reconnect=null;disconnectClient()}
+    private fun disconnect() {gates.values.forEach {it.ready(false)};reconnect?.cancel(false);reconnect=null;disconnectClient()}
     private fun releaseWakeLock() {synchronized(wakeLock) {if(wakeLock.isHeld) wakeLock.release()}}
     override fun onDestroy() {
-        closed.set(true);running=false;gate?.ready(false)
+        closed.set(true);running=false;gates.values.forEach {it.ready(false)}
         controller.remove(authObserver)
         try {network.unregisterNetworkCallback(networkCallback)} catch(_:Exception) {}
         // Wake only while processing a command, never throughout the idle connection.

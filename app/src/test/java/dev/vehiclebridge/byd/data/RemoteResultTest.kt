@@ -85,6 +85,34 @@ class RemoteResultTest {
         assertEquals(RemoteOutcome.UNKNOWN,api.executeControl(config,session,vehicle,"123456",DoorAction.UNLOCK) {}.outcome)
         assertEquals(1,commands);assertEquals(5,queries)
     }
+    @Test fun trunkCommandsUseChinaProtocolAndQuerySameActionWithoutResending() {
+        for((action,command) in listOf(DoorAction.OPEN_TRUNK to "OPENTRUNK",DoorAction.CLOSE_TRUNK to "CLOSETRUNK")) for(shared in listOf(false,true)) {
+            var commands=0;var queries=0;var sent=""
+            val target=Vehicle(vehicle.vin,"","","",shared)
+            val api=BydApi(pause={}) {endpoint,outer ->
+                assertEquals(if(shared) 1 else 0,JSONObject(outer).getInt("identifierType"))
+                when {
+                    endpoint.endsWith("remoteControl") -> {
+                        val data=inner(outer);commands++;sent=data.getString("requestSerial")
+                        assertEquals(command,data.getString("commandType"))
+                        assertEquals(CnCrypto.md5Upper("123456"),data.getString("commandPwd"))
+                        assertEquals("{}",data.getString("controlParamsMap"))
+                        JSONObject().put("code",0)
+                    }
+                    endpoint.endsWith("remoteControlResult") -> {
+                        queries++;assertEquals(command,inner(outer).getString("commandType"))
+                        assertEquals(sent,inner(outer).getString("requestSerial"))
+                        envelope("""{"controlState":1}""")
+                    }
+                    else -> JSONObject().put("code",0)
+                }
+            }
+            val result=api.executeControl(config,session,target,"123456",action) {}
+            assertEquals(RemoteOutcome.SUCCESS,result.outcome)
+            assertTrue(result.describe(action).startsWith(if(action==DoorAction.OPEN_TRUNK) "打开后备箱：" else "关闭后备箱："))
+            assertEquals(1,commands);assertEquals(1,queries)
+        }
+    }
     @Test fun immediateTerminalFailureDoesNotPoll() {
         var queries=0
         val api=BydApi(pause={}) {endpoint,_ ->

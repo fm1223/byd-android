@@ -70,7 +70,7 @@ class BydApi(private val pause: (Long)->Unit = {Thread.sleep(it)}, private val t
         try {
             return protocol.controlReceipt(post("/control/rc/remoteControl",protocol.doorRequest(session,vehicle,pin,action,serial)),session)
         } catch(e: ApiFailure) {
-            val operation=when(action) {DoorAction.LOCK -> "锁车";DoorAction.UNLOCK -> "解锁";DoorAction.SHUTDOWN -> "熄火"}
+            val operation=when(action) {DoorAction.LOCK -> "锁车";DoorAction.UNLOCK -> "解锁";DoorAction.SHUTDOWN -> "熄火";DoorAction.OPEN_TRUNK -> "打开后备箱";DoorAction.CLOSE_TRUNK -> "关闭后备箱"}
             if(e.code!=null) throw ApiFailure(e.code,operation+"请求被服务器拒绝："+e.label)
             throw ApiFailure(null,operation+"请求结果未知，请检查车辆；未自动重试")
         }

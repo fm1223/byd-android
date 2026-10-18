@@ -88,6 +88,11 @@ class ShutdownControlTest {
         repo.sendDoor(vin,DoorAction.UNLOCK);repo.select(other);repo.sendDoor(other,DoorAction.LOCK)
         assertEquals(listOf(DoorAction.UNLOCK,DoorAction.LOCK),api.commands)
     }
+    @Test fun trunkControlsDoNotTriggerShutdownOnLockPreference() {
+        val (repo,api,_)=fixture(true)
+        repo.sendDoor(vin,DoorAction.OPEN_TRUNK);repo.sendDoor(vin,DoorAction.CLOSE_TRUNK)
+        assertEquals(listOf(DoorAction.OPEN_TRUNK,DoorAction.CLOSE_TRUNK),api.commands)
+    }
     @Test fun boundOffUsesBoundVehiclePreference() {
         val (repo,api,_)=fixture(true)
         val binding=BemfaBinding("0123456789abcdef0123456789abcdef","testtopic",vin)

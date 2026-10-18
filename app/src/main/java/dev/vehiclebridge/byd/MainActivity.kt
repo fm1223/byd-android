@@ -93,6 +93,8 @@ class MainActivity: Activity() {
         binding.unlockButton.setOnClickListener {sendDoor(DoorAction.UNLOCK)}
         binding.lockButton.setOnClickListener {sendDoor(DoorAction.LOCK)}
         binding.shutdownButton.setOnClickListener {sendDoor(DoorAction.SHUTDOWN)}
+        binding.openTrunkButton.setOnClickListener {sendDoor(DoorAction.OPEN_TRUNK)}
+        binding.closeTrunkButton.setOnClickListener {sendDoor(DoorAction.CLOSE_TRUNK)}
         binding.shutdownOnLock.setOnCheckedChangeListener {_,enabled ->
             controller.state.info?.selected?.let {controller.setShutdownOnLock(it.vin,enabled)}
         }
@@ -195,7 +197,7 @@ class MainActivity: Activity() {
         binding.telemetryMessage.text=if(state.message.contains("车辆数据")) state.message else getString(R.string.telemetry_hint)
         binding.refreshTelemetry.isEnabled=false
         binding.pinStatus.text=if(info?.hasPin==true) "操作 PIN：••••••（已验证并加密保存）" else "操作 PIN：未保存"
-        listOf(binding.setPinButton,binding.unlockButton,binding.lockButton,binding.shutdownButton).forEach {it.isEnabled=!state.busy && vehicle!=null}
+        listOf(binding.setPinButton,binding.unlockButton,binding.lockButton,binding.shutdownButton,binding.openTrunkButton,binding.closeTrunkButton).forEach {it.isEnabled=!state.busy && vehicle!=null}
         binding.shutdownOnLock.setOnCheckedChangeListener(null)
         binding.shutdownOnLock.isChecked=vehicle?.vin in (info?.shutdownOnLock ?: emptySet())
         binding.shutdownOnLock.isEnabled=!state.busy && vehicle!=null

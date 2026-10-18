@@ -34,7 +34,7 @@ class BemfaService: Service() {
     @Volatile private var client: BemfaMqttClient?=null
     @Volatile private var binding: BemfaBinding?=null
     @Volatile private var gates: Map<String,CommandGate> = emptyMap()
-    private val commandBusy=AtomicBoolean(false)
+    private val commandBusy=CommandSlot()
     private var reconnect: ScheduledFuture<*>?=null
     private var retrySeconds=2L
     private lateinit var controller: AuthController
@@ -113,20 +113,22 @@ class BemfaService: Service() {
                 if(!closed.get() && client===current) {
                     val device=target.activeDevices.find {it.topic==topic} ?: return@message
                     val activeGate=gates[topic] ?: return@message
-                    if(!commandBusy.compareAndSet(false,true)) return@message
-                    val action=activeGate.accept(topic,payload,retained,duplicate)
-                    if(action!=null) {
+                    val delivery=commandBusy.accept(activeGate,topic,payload,retained,duplicate) ?: return@message
+                    try {
                         synchronized(wakeLock) {wakeLock.acquire(240_000L)}
                         main.post {
-                            if(closed.get() || binding?.id!=target.id) {activeGate.release();commandBusy.set(false);releaseWakeLock()}
+                            if(closed.get() || binding?.id!=target.id) {delivery.finish();releaseWakeLock()}
                             else {
-                                status("正在执行设备指令")
-                                controller.dispatchBridge(device.id,action,target.id) {result ->
-                                    activeGate.release();releaseWakeLock();status(result)
-                                }
+                                try {
+                                    status("已收到设备指令，正在执行")
+                                    controller.dispatchBridge(device.id,delivery.action,target.id) {result ->
+                                        try {status(result)} finally {delivery.finish();releaseWakeLock()}
+                                    }
+                                } catch(_:Exception) {delivery.finish();releaseWakeLock();status("设备指令未完成，请检查状态；未自动重试")}
                             }
                         }
-                    } else commandBusy.set(false)
+                    } catch(_:Exception) {delivery.finish();releaseWakeLock();status("设备指令未执行，请重新发送")}
+
                 }
             },lost={
                 if(!closed.get() && client===current) {

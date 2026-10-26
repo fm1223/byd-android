@@ -18,6 +18,7 @@ class BridgeRepositoryTest {
     }
     private inner class Api: AccountApi {
         val actions=mutableListOf<DoorAction>()
+        val temperatures=mutableListOf<Int>()
         var cars=listOf(one,two);val targets=mutableListOf<String>();var expire=false
         override fun login(config: AccountConfig)=session
         override fun vehicleCount(config: AccountConfig,session: Session)=cars.size
@@ -25,6 +26,9 @@ class BridgeRepositoryTest {
             if(expire) {expire=false;throw ApiFailure("1002")};return cars
         }
         override fun verifyPin(config: AccountConfig,session: Session,vehicle: Vehicle,pin: String) {targets.add("verify:"+vehicle.vin)}
+        override fun executeClimateTemperature(config: AccountConfig,session: Session,vehicle: Vehicle,pin: String,celsius: Int,progress: (String)->Unit): ControlReceipt {
+            targets.add(vehicle.vin);temperatures.add(celsius);actions.add(DoorAction.CLIMATE_TEMPERATURE);return ControlReceipt(RemoteOutcome.SUCCESS)
+        }
         override fun sendDoor(config: AccountConfig,session: Session,vehicle: Vehicle,pin: String,action: DoorAction) {targets.add(vehicle.vin);actions.add(action)}
     }
     private fun saved()=SavedAccount(config,session,one.vin,mapOf(one.vin to "123456",two.vin to "654321"))
@@ -100,4 +104,45 @@ class BridgeRepositoryTest {
         assertEquals(listOf(DoorAction.CLOSE_TRUNK),api.actions)
         repo.setDeviceEnabled(trunk.id,false);assertFalse(store.value.binding!!.enabled)
     }
+    @Test fun climateBindingPersistsAndRoutesToItsOwnVehicleWithDistinctOffAction() {
+        val store=Store(saved());val api=Api();val repo=SessionRepository(api,store);repo.restore()
+        val device=BemfaDevice("ac005",one.vin,BemfaFunction.CLIMATE)
+        repo.saveDevice(binding.key,device);repo.enableBinding();repo.select(two.vin)
+        val decoded=BemfaBindingCodec.decode(org.json.JSONObject(BemfaBindingCodec.encode(store.value.binding!!)))
+        assertEquals(BemfaFunction.CLIMATE,decoded.devices.single().function)
+        repo.sendBoundDoor(device.id,DoorAction.CLIMATE_ON);repo.sendBoundDoor(device.id,DoorAction.CLIMATE_OFF)
+        assertEquals(listOf(DoorAction.CLIMATE_ON,DoorAction.CLIMATE_OFF),api.actions)
+        assertEquals(listOf("verify:"+one.vin,one.vin,"verify:"+one.vin,one.vin),api.targets)
+        assertThrows(ApiFailure::class.java) {repo.sendBoundDoor(device.id,DoorAction.SHUTDOWN)}
+    }
+    @Test fun manualTemperatureRequiresPinVerificationAndReportsTargetWithoutChangingBinding() {
+        val store=Store(saved());val api=Api();val repo=SessionRepository(api,store);repo.restore()
+        assertThrows(IllegalArgumentException::class.java) {repo.sendDoor(one.vin,DoorAction.CLIMATE_TEMPERATURE,temperatureCelsius=16)}
+        assertTrue(api.targets.isEmpty())
+        val result=repo.sendDoor(one.vin,DoorAction.CLIMATE_TEMPERATURE,temperatureCelsius=23)
+        assertEquals(listOf("verify:"+one.vin,one.vin),api.targets);assertEquals(listOf(23),api.temperatures)
+        assertTrue(result.controlMessage!!.contains("23℃"));assertEquals(one.vin,result.selectedVin)
+        assertFalse(BemfaFunction.CLIMATE.allows(DoorAction.CLIMATE_TEMPERATURE))
+    }
+    @Test fun nextManualAndBoundClimateOnUseTheirVehiclesPresetButOffDoesNot() {
+        val api=Api();val repo=SessionRepository(api,Store(saved())) {if(it==one.vin) 23 else 27};repo.restore()
+        repo.select(two.vin);repo.sendDoor(two.vin,DoorAction.CLIMATE_ON)
+        val device=BemfaDevice("ac005",one.vin,BemfaFunction.CLIMATE)
+        repo.saveDevice(binding.key,device);repo.enableBinding()
+        repo.sendBoundDoor(device.id,DoorAction.CLIMATE_ON)
+        repo.sendBoundDoor(device.id,DoorAction.CLIMATE_OFF)
+        assertEquals(listOf(27,23),api.temperatures)
+        assertEquals(listOf(DoorAction.CLIMATE_TEMPERATURE,DoorAction.CLIMATE_TEMPERATURE,DoorAction.CLIMATE_OFF),api.actions)
+    }
+ @Test fun boundExplicitTemperatureOverridesPresetWithoutChangingOtherCommands() {
+  val api=Api();val repo=SessionRepository(api,Store(saved())) {25};repo.restore()
+  val device=BemfaDevice("ac005",one.vin,BemfaFunction.CLIMATE)
+  repo.saveDevice(binding.key,device);repo.enableBinding()
+  repo.sendBoundDoor(device.id,DoorAction.CLIMATE_ON,temperatureCelsius=20)
+  assertEquals(listOf(20),api.temperatures)
+  assertTrue(repo.snapshot()!!.selectedControlMessage!!.contains("20℃"))
+  assertThrows(IllegalArgumentException::class.java) {repo.sendBoundDoor(device.id,DoorAction.CLIMATE_ON,temperatureCelsius=32)}
+  assertThrows(ApiFailure::class.java) {repo.sendBoundDoor(device.id,DoorAction.CLIMATE_OFF,temperatureCelsius=20)}
+  assertEquals(1,api.temperatures.size)
+ }
 }

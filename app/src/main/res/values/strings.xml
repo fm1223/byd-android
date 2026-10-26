@@ -92,4 +92,11 @@
  <string name="door_control_title">车锁</string>
  <string name="trunk_control_title">后备箱</string>
  <string name="power_state_hint">电源状态仅作熄火参考</string>
+ <string name="climate_on">开启空调</string>
+ <string name="climate_off">关闭空调</string>
+ <string name="climate_hint">开启使用预设温度，未设置时默认25℃，运行10分钟；关闭空调可能同时使车辆下电。</string>
+ <string name="climate_section">空调</string>
+ <string name="climate_temperature_menu">温度设置 ›</string>
+ <string name="temperature_adjust_title">调节目标温度</string>
+ <string name="temperature_adjust_accessibility">目标温度滑块，17至31摄氏度，开启时松手立即调温，关闭或状态未知时只保存预设温度</string>
 </resources>

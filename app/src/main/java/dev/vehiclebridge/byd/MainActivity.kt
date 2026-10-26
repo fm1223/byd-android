@@ -36,6 +36,9 @@ class MainActivity: Activity() {
     private val statusTick=object: Runnable {override fun run() {if(resumed) {renderControls(controller.state);statusHandler.postDelayed(this,30_000)}}}
     private var renderedVehicleVin: String?=null
     private var pinDialog: AlertDialog? = null
+    private val temperatureAdjustment=TemperatureAdjustment()
+    private val temperaturePreferences by lazy {ClimateTemperaturePreferences(this)}
+    private val chosenTemperatures=mutableMapOf<String,Int>()
     private val bridgeObserver: (String)->Unit={binding.bridgeStatusBadge.showBridgeStatus(controller.state.info?.binding?.enabled==true)}
     private val observer: (AuthState)->Unit = {render(it)}
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -103,6 +106,37 @@ class MainActivity: Activity() {
         }
         binding.refreshVehicleStatus.setOnClickListener {controller.state.info?.selected?.let {needsStatusRefresh=false;controller.refreshVehicleStatus(it.vin)}}
         binding.shutdownButton.setOnClickListener {sendDoor(DoorAction.SHUTDOWN)}
+        binding.climateButton.setOnClickListener {
+            val running=controller.state.info?.vehicleStatus.effectiveClimate(controller.state.climates[controller.state.info?.selectedVin]).running
+            chooseAction(when(running) {true->DoorAction.CLIMATE_OFF;false->DoorAction.CLIMATE_ON;null->null},"空调操作",listOf("开启空调" to DoorAction.CLIMATE_ON,"关闭空调" to DoorAction.CLIMATE_OFF))
+        }
+        binding.climateTemperatureSlider.setOnSeekBarChangeListener(object: android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onStartTrackingTouch(slider: android.widget.SeekBar) {
+                temperatureAdjustment.begin(controller.state.info?.selectedVin,slider.progress+ClimateTemperature.MIN)
+                binding.contentScroll.requestDisallowInterceptTouchEvent(true)
+            }
+            override fun onProgressChanged(slider: android.widget.SeekBar,progress: Int,fromUser: Boolean) {
+                if(fromUser) binding.climateTemperatureValue.text="目标 "+(progress+ClimateTemperature.MIN)+"℃"
+            }
+            override fun onStopTrackingTouch(slider: android.widget.SeekBar) {
+                binding.contentScroll.requestDisallowInterceptTouchEvent(false)
+                commitTemperature(slider)
+            }
+        })
+        @Suppress("ClickableViewAccessibility")
+        binding.climateTemperatureSlider.setOnTouchListener {_,event ->
+            if(event.actionMasked==android.view.MotionEvent.ACTION_CANCEL) temperatureAdjustment.cancel()
+            false
+        }
+        binding.climateTemperatureSlider.accessibilityDelegate=object: View.AccessibilityDelegate() {
+            override fun performAccessibilityAction(host: View,action: Int,args: Bundle?): Boolean {
+                val setting=action in listOf(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id,android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD,android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+                if(setting) temperatureAdjustment.begin(controller.state.info?.selectedVin,binding.climateTemperatureSlider.progress+ClimateTemperature.MIN)
+                val result=super.performAccessibilityAction(host,action,args)
+                if(setting) {if(result) commitTemperature(binding.climateTemperatureSlider) else temperatureAdjustment.cancel()}
+                return result
+            }
+        }
         binding.shutdownOnLock.setOnCheckedChangeListener {_,enabled ->
             controller.state.info?.selected?.let {controller.setShutdownOnLock(it.vin,enabled)}
         }
@@ -133,16 +167,26 @@ class MainActivity: Activity() {
         if(action!=null) {sendDoor(action);return}
         AlertDialog.Builder(this).setTitle(title).setItems(choices.map {it.first}.toTypedArray()) {_,index ->sendDoor(choices[index].second)}.setNegativeButton("取消",null).show()
     }
-    private fun sendDoor(action: DoorAction) {
+    private fun commitTemperature(slider: android.widget.SeekBar) {
+        val info=controller.state.info
+        val value=temperatureAdjustment.finish(info?.selectedVin,slider.progress+ClimateTemperature.MIN,controller.state.busy || !resumed)
+        if(value!=null && info?.selectedVin!=null) {
+            chosenTemperatures[info.selectedVin]=value
+            temperaturePreferences.set(info.selectedVin,value)
+            val running=info.vehicleStatus.effectiveClimate(controller.state.climates[info.selectedVin]).running
+            if(running==true) sendDoor(DoorAction.CLIMATE_TEMPERATURE,value) else renderControls(controller.state)
+        } else renderControls(controller.state)
+    }
+    private fun sendDoor(action: DoorAction,temperatureCelsius: Int?=null) {
         val info=controller.state.info ?: return
         val vehicle=info.selected ?: return
         if(controller.state.busy) return
-        if(info.hasPin) {manualRequest=true;controller.sendDoor(vehicle.vin,action)}
-        else pinDialog("输入 PIN · " + vehicle.displayName) {manualRequest=true;controller.sendDoor(vehicle.vin,action,it)}
+        if(info.hasPin) {manualRequest=true;controller.sendDoor(vehicle.vin,action,temperatureCelsius=temperatureCelsius)}
+        else pinDialog("输入 PIN · " + vehicle.displayName) {manualRequest=true;controller.sendDoor(vehicle.vin,action,it,temperatureCelsius)}
     }
     private fun render(state: AuthState) {
         if(renderedVehicleVin!=state.info?.selectedVin) {
-            needsStatusRefresh=true;renderedVehicleVin=state.info?.selectedVin;lastControlMessage="暂未发送车辆请求";manualRequest=false
+            temperatureAdjustment.cancel();needsStatusRefresh=true;renderedVehicleVin=state.info?.selectedVin;lastControlMessage="暂未发送车辆请求";manualRequest=false
         }
         val trackingManual=manualRequest
         if(manualRequest) {
@@ -201,7 +245,7 @@ class MainActivity: Activity() {
         binding.vehicleVin.text=vehicle?.let {"VIN  "+it.maskedVin} ?: ""
         binding.pinVehicle.text=vehicle?.let {"当前车辆："+it.displayName} ?: "请先在车辆页选择车辆"
         binding.pinPrompt.text=if(info?.hasPin==true) "PIN 已保存 · 可直接操作" else "未保存 PIN · 点击前往设置"
-        binding.bridgeTarget.text=info?.binding?.let {value -> "已配置 "+value.devices.size+" 个设备（启用 "+value.activeDevices.size+" 个）\n"+value.devices.joinToString("、") {it.name+" · "+it.function.label}} ?: "添加巴法云设备，分别控制车锁或后备箱"
+        binding.bridgeTarget.text=info?.binding?.let {value -> "已配置 "+value.devices.size+" 个设备（启用 "+value.activeDevices.size+" 个）\n"+value.devices.joinToString("、") {it.name+" · "+it.function.label}} ?: "添加巴法云设备，分别控制车锁、后备箱或空调"
         imageLoader.load(vehicle?.imageUrl ?: "")
         renderControls(state)
         binding.pinStatus.text=if(info?.hasPin==true) "操作 PIN：••••••（已验证并加密保存）" else "操作 PIN：未保存"
@@ -227,12 +271,15 @@ class MainActivity: Activity() {
         val online=report?.onlineState==1
         val showReported=status?.canShowReportedState==true
         val time=report?.locks?.reportedAt?.let {java.text.SimpleDateFormat("MM-dd HH:mm:ss",java.util.Locale.getDefault()).format(Date(it))}
+        binding.reportedTime.text=time?.let {"上报 $it"} ?: ""
+        binding.reportedTime.visibility=if(selectedTab==0 && info?.selected!=null && time!=null) View.VISIBLE else View.GONE
         binding.vehicleStatusResult.text=when {
             report==null -> status?.vehicleError?.let {"刷新失败 · $it"} ?: "正在等待车辆状态"
-            online -> "车辆在线 · 上报 "+(time ?: "时间未知")
-            report.onlineState==2 -> "车辆离线 · 上报 "+(time ?: "时间未知")
-            else -> "上报 "+(time ?: "时间未知")
+            online -> "车辆在线"
+            report.onlineState==2 -> "车辆离线"
+            else -> ""
         }
+        binding.vehicleStatusResult.visibility=if(binding.vehicleStatusResult.text.isNotEmpty()) View.VISIBLE else View.GONE
         val sameVehicle=state.actionVin==info?.selectedVin
         val doorBusy=state.busy && sameVehicle && state.action in listOf(DoorAction.LOCK,DoorAction.UNLOCK)
         val trunkBusy=state.busy && sameVehicle && state.action in listOf(DoorAction.OPEN_TRUNK,DoorAction.CLOSE_TRUNK)
@@ -279,6 +326,29 @@ class MainActivity: Activity() {
             when {powerOff->"已下电";powerOn->"已上电";else->waiting},"点击熄火",
             if(powerOff || powerOn) R.drawable.ic_state_power else R.drawable.ic_state_unknown,
             when {powerOff->1;powerOn->2;else->0},"车辆电源，电源状态仅作熄火参考")
+        val climate=status.effectiveClimate(state.climates[info?.selectedVin])
+        val climateReading=status.canReadClimate() && info?.selectedVin in state.climateBusy
+        val climateOperating=state.busy && sameVehicle && state.action in listOf(DoorAction.CLIMATE_ON,DoorAction.CLIMATE_OFF,DoorAction.CLIMATE_TEMPERATURE)
+        val climateTarget=climate?.targetCelsius ?: report?.climateTargetCelsius
+        val climateLabel=(when(climate?.running) {true->"已开启";false->"已关闭";null->"状态未知"})+(climateTarget?.let {" · $it℃"} ?: " · —℃")
+        val climateAction=when {climateReading->"正在读取";climate?.running==true->"点击关闭";climate?.running==false->"点击开启";else->"点击选择操作"}
+        tile(binding.climateButton,binding.climateIcon,binding.climateState,binding.climateHint,binding.climateProgress,climateOperating,climateLabel,climateAction,R.drawable.ic_state_climate,when(climate?.running) {true->2;false->1;null->0},"空调目标温度")
+        binding.climateButton.isEnabled=!state.busy && !climateReading && info?.selected!=null
+        val vin=info?.selectedVin
+        if(state.busy || vin!=renderedVehicleVin) temperatureAdjustment.cancel()
+        if(!temperatureAdjustment.active) {
+            val selected=chosenTemperatures[vin] ?: vin?.let {temperaturePreferences.get(it)} ?: climateTarget ?: ClimateTemperature.DEFAULT
+            binding.climateTemperatureSlider.progress=selected-ClimateTemperature.MIN
+            binding.climateTemperatureValue.text="目标 $selected℃"
+        }
+        binding.climateTemperatureSlider.isEnabled=!state.busy && info?.selected!=null
+        binding.climateTemperatureNote.text=when {
+            climateOperating->"正在执行空调操作"
+            climate.running==true->"松手后立即调温，重新请求运行10分钟"
+            climate.running==false->"松手后保存，下次开启空调时使用"
+            else->"空调状态未知，仅保存下次开启的温度"
+        }
+        binding.climateTemperatureProgress.visibility=if(climateOperating) View.VISIBLE else View.GONE
         binding.refreshVehicleStatus.text=if(state.busy && state.refreshing) "" else "刷新"
         binding.refreshVehicleStatus.contentDescription=if(state.busy && state.refreshing) "正在刷新车辆状态" else "刷新车辆状态"
         binding.refreshVehicleStatus.isEnabled=!state.busy && info?.selected!=null
@@ -310,6 +380,6 @@ class MainActivity: Activity() {
     override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);setIntent(intent);selectTab(intent.getIntExtra("tab",if(intent.getBooleanExtra("settings",false)) 2 else 0))}
     override fun onSaveInstanceState(outState: Bundle) {outState.putInt("tab",selectedTab);bridgePanel.saveState(outState);super.onSaveInstanceState(outState)}
     override fun onResume() {super.onResume();resumed=true;needsStatusRefresh=true;bridgePanel.resume();render(controller.state);statusHandler.removeCallbacks(statusTick);statusHandler.postDelayed(statusTick,30_000)}
-    override fun onPause() {resumed=false;statusHandler.removeCallbacks(statusTick);bridgePanel.pause();super.onPause()}
+    override fun onPause() {temperatureAdjustment.cancel();resumed=false;statusHandler.removeCallbacks(statusTick);bridgePanel.pause();super.onPause()}
     override fun onDestroy() {pinDialog?.dismiss();bridgePanel.close();imageLoader.close();controller.remove(observer);BridgeStatus.remove(bridgeObserver);super.onDestroy()}
 }

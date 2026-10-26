@@ -121,7 +121,7 @@ class BemfaService: Service() {
                             else {
                                 try {
                                     status("已收到设备指令，正在执行")
-                                    controller.dispatchBridge(device.id,delivery.action,target.id) {result ->
+                                    controller.dispatchBridge(device.id,delivery.action,target.id,delivery.temperatureCelsius) {result ->
                                         try {status(result)} finally {delivery.finish();releaseWakeLock()}
                                     }
                                 } catch(_:Exception) {delivery.finish();releaseWakeLock();status("设备指令未完成，请检查状态；未自动重试")}

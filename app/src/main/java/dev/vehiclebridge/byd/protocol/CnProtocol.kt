@@ -108,11 +108,16 @@ class CnProtocol(private val config: AccountConfig, private val clock: () -> Lon
     fun wakeRequest(session: Session, vehicle: Vehicle): String {
         val now=clock();return controlEnvelope(session,vehicle,controlBase(now).apply {put("vin",vehicle.vin)},now)
     }
-    fun doorRequest(session: Session, vehicle: Vehicle, pin: String, action: DoorAction, requestSerial: String? = null): String {
+    fun doorRequest(session: Session, vehicle: Vehicle, pin: String, action: DoorAction, requestSerial: String? = null, temperatureCelsius: Int? = null): String {
         require(Regex("[0-9]{6}").matches(pin))
+        if(action==DoorAction.CLIMATE_TEMPERATURE) require(temperatureCelsius!=null)
+        require(temperatureCelsius==null || action==DoorAction.CLIMATE_TEMPERATURE)
+        // China reference defines cycleMode=2 as internal circulation and timeSpan=1 as 10 minutes.
+        // Omit undocumented remoteMode and windLevel: do not force an unverified fan setting.
+        val temp=ClimateTemperature.encode(temperatureCelsius ?: ClimateTemperature.DEFAULT)
         val now=clock();val inner=controlBase(now).apply {
             putAll(linkedMapOf("vin" to vehicle.vin,"source" to "app","tboxVersion" to "3","autoType" to "1",
-                "commandPwd" to CnCrypto.md5Upper(pin),"commandType" to action.command,"controlParamsMap" to "{}",
+                "commandPwd" to CnCrypto.md5Upper(pin),"commandType" to action.command,"controlParamsMap" to (if(action in listOf(DoorAction.CLIMATE_ON,DoorAction.CLIMATE_TEMPERATURE)) WireJson.encode(linkedMapOf("mainSettingTemp" to temp,"copilotSettingTemp" to temp,"cycleMode" to 2,"timeSpan" to 1)) else "{}"),
                 "asyncControl" to "0","requestSerial" to (requestSerial ?: (now%100000).toString())))
         }
         return controlEnvelope(session,vehicle,inner,now)

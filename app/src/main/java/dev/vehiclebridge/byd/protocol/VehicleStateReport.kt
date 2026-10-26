@@ -14,6 +14,7 @@ class VehicleStateReport(data: JSONObject) {
     val connectState=(number("connectState") ?: data.opt("connectState")?.takeIf {it !is Boolean}?.toString()?.toIntOrNull())?.takeIf {it in 0..1}
     val trunk=number("trunkLid") ?: number("backCover")
     val power=number("powerGear")
+    val climateTargetCelsius get()=ClimateReport.targetTemperature(body)
     fun hasControlStates()=locks.locks.all {it!=null} && trunk in listOf(0,1) && power in listOf(1,3)
     fun completeAndRecent(now: Long)=hasControlStates() && locks.recent(now)
     fun describe(): String {

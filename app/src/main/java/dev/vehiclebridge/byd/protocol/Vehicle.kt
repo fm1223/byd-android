@@ -2,7 +2,7 @@ package dev.vehiclebridge.byd.protocol
 
 import org.json.JSONObject
 
-enum class DoorAction(val command: String) { LOCK("LOCKDOOR"), UNLOCK("OPENDOOR"), SHUTDOWN("CLOSEAIR"), OPEN_TRUNK("OPENTRUNK"), CLOSE_TRUNK("CLOSETRUNK") }
+enum class DoorAction(val command: String) { LOCK("LOCKDOOR"), UNLOCK("OPENDOOR"), SHUTDOWN("CLOSEAIR"), OPEN_TRUNK("OPENTRUNK"), CLOSE_TRUNK("CLOSETRUNK"), CLIMATE_ON("OPENAIR"), CLIMATE_OFF("CLOSEAIR"), CLIMATE_TEMPERATURE("OPENAIR") }
 
 class Vehicle(val vin: String, val name: String, val model: String, val plate: String, val shared: Boolean, val imageUrl: String = "", val summary: VehicleTelemetry = VehicleTelemetry(emptyList())) {
     val maskedVin get() = if(vin.length > 8) vin.take(3) + "…" + vin.takeLast(4) else "已隐藏"

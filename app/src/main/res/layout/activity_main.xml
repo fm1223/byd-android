@@ -4,7 +4,10 @@
             <TextView android:id="@+id/pageTitle" style="@style/Title" android:layout_width="0dp" android:layout_weight="1" android:textSize="24sp" android:text="@string/ui_label_1" />
             <TextView android:id="@+id/bridgeStatusBadge" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minHeight="48dp" android:gravity="center" android:layout_marginStart="12dp" android:singleLine="true" android:clickable="true" android:focusable="true" android:accessibilityLiveRegion="polite" />
         </LinearLayout>
-        <TextView android:id="@+id/pageSubtitle" style="@style/Caption" android:text="@string/ui_label_2" android:layout_marginTop="4dp" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginTop="4dp">
+            <TextView android:id="@+id/pageSubtitle" style="@style/Caption" android:layout_width="0dp" android:layout_weight="1" android:maxLines="1" android:ellipsize="end" android:text="@string/ui_label_2" />
+            <TextView android:id="@+id/reportedTime" style="@style/Caption" android:layout_width="wrap_content" android:layout_marginStart="8dp" android:gravity="end" android:singleLine="true" android:visibility="gone" />
+        </LinearLayout>
     </LinearLayout>
     <ScrollView android:id="@+id/contentScroll" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingHorizontal="20dp" android:paddingTop="@dimen/page_content_top" android:paddingBottom="20dp">
@@ -44,35 +47,58 @@
                     </LinearLayout>
                     <LinearLayout style="@style/Card">
                         <TextView style="@style/Section" android:text="@string/ui_label_9" android:layout_marginTop="0dp" android:layout_marginBottom="0dp" />
-                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:baselineAligned="false" android:layout_marginTop="12dp">
-<LinearLayout android:id="@+id/doorButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="148dp" android:layout_marginStart="0dp" android:orientation="vertical" android:gravity="center" android:paddingHorizontal="6dp" android:paddingVertical="14dp" android:clickable="true" android:focusable="true" android:importantForAccessibility="yes" android:descendantFocusability="blocksDescendants">
-                                <TextView style="@style/Caption" android:layout_width="wrap_content" android:text="车锁" android:importantForAccessibility="no" />
-                                <FrameLayout android:layout_width="32dp" android:layout_height="32dp" android:layout_marginTop="10dp" android:importantForAccessibility="noHideDescendants">
-                                    <ImageView android:id="@+id/doorIcon" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" />
-                                    <ProgressBar android:id="@+id/doorProgress" android:layout_width="28dp" android:layout_height="28dp" android:layout_gravity="center" android:visibility="gone" />
-                                </FrameLayout>
-                                <TextView android:id="@+id/doorState" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:textSize="18sp" android:textStyle="bold" android:gravity="center" android:importantForAccessibility="no" />
-                                <TextView android:id="@+id/doorHint" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:textSize="11sp" android:gravity="center" android:importantForAccessibility="no" />
-                            </LinearLayout>
-<LinearLayout android:id="@+id/trunkButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="148dp" android:layout_marginStart="8dp" android:orientation="vertical" android:gravity="center" android:paddingHorizontal="6dp" android:paddingVertical="14dp" android:clickable="true" android:focusable="true" android:importantForAccessibility="yes" android:descendantFocusability="blocksDescendants">
-                                <TextView style="@style/Caption" android:layout_width="wrap_content" android:text="后备箱" android:importantForAccessibility="no" />
-                                <FrameLayout android:layout_width="32dp" android:layout_height="32dp" android:layout_marginTop="10dp" android:importantForAccessibility="noHideDescendants">
-                                    <ImageView android:id="@+id/trunkIcon" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" />
-                                    <ProgressBar android:id="@+id/trunkProgress" android:layout_width="28dp" android:layout_height="28dp" android:layout_gravity="center" android:visibility="gone" />
-                                </FrameLayout>
-                                <TextView android:id="@+id/trunkState" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:textSize="18sp" android:textStyle="bold" android:gravity="center" android:importantForAccessibility="no" />
-                                <TextView android:id="@+id/trunkHint" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:textSize="11sp" android:gravity="center" android:importantForAccessibility="no" />
-                            </LinearLayout>
-<LinearLayout android:id="@+id/shutdownButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="148dp" android:layout_marginStart="8dp" android:orientation="vertical" android:gravity="center" android:paddingHorizontal="6dp" android:paddingVertical="14dp" android:clickable="true" android:focusable="true" android:importantForAccessibility="yes" android:descendantFocusability="blocksDescendants">
-                                <TextView style="@style/Caption" android:layout_width="wrap_content" android:text="车辆电源" android:importantForAccessibility="no" />
-                                <FrameLayout android:layout_width="32dp" android:layout_height="32dp" android:layout_marginTop="10dp" android:importantForAccessibility="noHideDescendants">
-                                    <ImageView android:id="@+id/shutdownIcon" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" />
-                                    <ProgressBar android:id="@+id/shutdownProgress" android:layout_width="28dp" android:layout_height="28dp" android:layout_gravity="center" android:visibility="gone" />
-                                </FrameLayout>
-                                <TextView android:id="@+id/shutdownState" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:textSize="18sp" android:textStyle="bold" android:gravity="center" android:importantForAccessibility="no" />
-                                <TextView android:id="@+id/shutdownHint" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:textSize="11sp" android:gravity="center" android:importantForAccessibility="no" />
-                            </LinearLayout>
-                        </LinearLayout>
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:baselineAligned="false" android:layout_marginTop="12dp">
+<dev.vehiclebridge.byd.SquareControlTile android:id="@+id/doorButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="0dp" android:orientation="vertical" android:gravity="center" android:padding="10dp" android:clickable="true" android:focusable="true" android:importantForAccessibility="yes" android:descendantFocusability="blocksDescendants">
+    <TextView style="@style/Caption" android:layout_width="wrap_content" android:text="车锁" android:importantForAccessibility="no" />
+    <FrameLayout android:layout_width="30dp" android:layout_height="30dp" android:layout_marginTop="8dp" android:importantForAccessibility="noHideDescendants">
+        <ImageView android:id="@+id/doorIcon" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" />
+        <ProgressBar android:id="@+id/doorProgress" android:layout_width="26dp" android:layout_height="26dp" android:layout_gravity="center" android:visibility="gone" />
+    </FrameLayout>
+    <TextView android:id="@+id/doorState" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textSize="18sp" android:textStyle="bold" android:gravity="center" android:importantForAccessibility="no" />
+    <TextView android:id="@+id/doorHint" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:textSize="12sp" android:gravity="center" android:importantForAccessibility="no" />
+</dev.vehiclebridge.byd.SquareControlTile><dev.vehiclebridge.byd.SquareControlTile android:id="@+id/trunkButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="12dp" android:orientation="vertical" android:gravity="center" android:padding="10dp" android:clickable="true" android:focusable="true" android:importantForAccessibility="yes" android:descendantFocusability="blocksDescendants">
+    <TextView style="@style/Caption" android:layout_width="wrap_content" android:text="后备箱" android:importantForAccessibility="no" />
+    <FrameLayout android:layout_width="30dp" android:layout_height="30dp" android:layout_marginTop="8dp" android:importantForAccessibility="noHideDescendants">
+        <ImageView android:id="@+id/trunkIcon" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" />
+        <ProgressBar android:id="@+id/trunkProgress" android:layout_width="26dp" android:layout_height="26dp" android:layout_gravity="center" android:visibility="gone" />
+    </FrameLayout>
+    <TextView android:id="@+id/trunkState" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textSize="18sp" android:textStyle="bold" android:gravity="center" android:importantForAccessibility="no" />
+    <TextView android:id="@+id/trunkHint" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:textSize="12sp" android:gravity="center" android:importantForAccessibility="no" />
+</dev.vehiclebridge.byd.SquareControlTile>
+</LinearLayout>
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:baselineAligned="false" android:layout_marginTop="12dp">
+<dev.vehiclebridge.byd.SquareControlTile android:id="@+id/shutdownButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="0dp" android:orientation="vertical" android:gravity="center" android:padding="10dp" android:clickable="true" android:focusable="true" android:importantForAccessibility="yes" android:descendantFocusability="blocksDescendants">
+    <TextView style="@style/Caption" android:layout_width="wrap_content" android:text="车辆电源" android:importantForAccessibility="no" />
+    <FrameLayout android:layout_width="30dp" android:layout_height="30dp" android:layout_marginTop="8dp" android:importantForAccessibility="noHideDescendants">
+        <ImageView android:id="@+id/shutdownIcon" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" />
+        <ProgressBar android:id="@+id/shutdownProgress" android:layout_width="26dp" android:layout_height="26dp" android:layout_gravity="center" android:visibility="gone" />
+    </FrameLayout>
+    <TextView android:id="@+id/shutdownState" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textSize="18sp" android:textStyle="bold" android:gravity="center" android:importantForAccessibility="no" />
+    <TextView android:id="@+id/shutdownHint" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:textSize="12sp" android:gravity="center" android:importantForAccessibility="no" />
+</dev.vehiclebridge.byd.SquareControlTile><dev.vehiclebridge.byd.SquareControlTile android:id="@+id/climateButton" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="12dp" android:orientation="vertical" android:gravity="center" android:padding="10dp" android:clickable="true" android:focusable="true" android:importantForAccessibility="yes" android:descendantFocusability="blocksDescendants">
+    <TextView style="@style/Caption" android:layout_width="wrap_content" android:text="空调 · 目标温度" android:importantForAccessibility="no" />
+    <FrameLayout android:layout_width="30dp" android:layout_height="30dp" android:layout_marginTop="8dp" android:importantForAccessibility="noHideDescendants">
+        <ImageView android:id="@+id/climateIcon" android:layout_width="match_parent" android:layout_height="match_parent" android:importantForAccessibility="no" />
+        <ProgressBar android:id="@+id/climateProgress" android:layout_width="26dp" android:layout_height="26dp" android:layout_gravity="center" android:visibility="gone" />
+    </FrameLayout>
+    <TextView android:id="@+id/climateState" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textSize="18sp" android:textStyle="bold" android:gravity="center" android:importantForAccessibility="no" />
+    <TextView android:id="@+id/climateHint" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:textSize="12sp" android:gravity="center" android:importantForAccessibility="no" />
+</dev.vehiclebridge.byd.SquareControlTile>
+</LinearLayout>
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp" android:background="@drawable/button_soft" android:layout_marginTop="12dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+        <TextView style="@style/Body" android:layout_width="0dp" android:layout_weight="1" android:text="@string/temperature_adjust_title" />
+        <ProgressBar android:id="@+id/climateTemperatureProgress" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="8dp" android:visibility="gone" />
+        <TextView android:id="@+id/climateTemperatureValue" style="@style/Body" android:layout_width="wrap_content" android:textSize="20sp" android:textStyle="bold" android:textColor="@color/accent" android:accessibilityLiveRegion="polite" />
+    </LinearLayout>
+    <SeekBar android:id="@+id/climateTemperatureSlider" android:minHeight="4dp" android:maxHeight="4dp" android:layout_width="match_parent" android:layout_height="48dp" android:max="14" android:progress="8" android:saveEnabled="false" android:contentDescription="@string/temperature_adjust_accessibility" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+        <TextView style="@style/Caption" android:layout_width="0dp" android:layout_weight="1" android:text="17℃" />
+        <TextView style="@style/Caption" android:layout_width="wrap_content" android:text="31℃" />
+    </LinearLayout>
+    <TextView android:id="@+id/climateTemperatureNote" style="@style/Caption" android:layout_marginTop="6dp" />
+</LinearLayout>
+                        <TextView style="@style/Caption" android:text="@string/climate_hint" android:layout_marginTop="8dp" />
                         <TextView style="@style/Caption" android:text="@string/power_state_hint" android:layout_marginTop="8dp" />
                         <LinearLayout android:layout_width="match_parent" android:layout_height="24dp" android:layout_marginTop="12dp" android:gravity="center_vertical">
                             <TextView style="@style/Caption" android:layout_width="0dp" android:layout_weight="1" android:text="@string/latest_control_result" />

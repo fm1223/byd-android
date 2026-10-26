@@ -6,7 +6,8 @@ import java.util.UUID
 /** Fixed pairs keep on/off semantics visible when a device is configured. */
 enum class BemfaFunction(val label: String,val onAction: DoorAction,val offAction: DoorAction,val hint: String) {
     DOOR("车锁",DoorAction.UNLOCK,DoorAction.LOCK,"on 解锁 · off 锁车（按车辆设置先熄火）"),
-    TRUNK("后备箱",DoorAction.OPEN_TRUNK,DoorAction.CLOSE_TRUNK,"on 打开后备箱 · off 关闭后备箱");
+    TRUNK("后备箱",DoorAction.OPEN_TRUNK,DoorAction.CLOSE_TRUNK,"on 打开后备箱 · off 关闭后备箱"),
+    CLIMATE("空调",DoorAction.CLIMATE_ON,DoorAction.CLIMATE_OFF,"on 开启空调（默认参数，10分钟）· off 关闭空调，可能同时下电；兼容带 # 参数消息，暂只处理开关");
     fun allows(action: DoorAction)=action==onAction || action==offAction
 }
 class BemfaDevice(val topic: String,val vin: String,val function: BemfaFunction=BemfaFunction.DOOR,

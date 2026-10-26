@@ -15,7 +15,7 @@ class SessionInfo(val vehicleCount: Int, val createdAt: Long, val restored: Bool
     val selected get() = vehicles.find { it.vin==selectedVin }
 }
 /** Serialized by the controller. A vehicle command is never retried. */
-class SessionRepository(private val api: AccountApi, private val storage: SessionStorage) {
+class SessionRepository(private val api: AccountApi, private val storage: SessionStorage, private val climateTemperature: (String)->Int? = {null}) {
     private val statusReports=mutableMapOf<String,VehicleStatus>()
     private val recentControls=mutableMapOf<String,String>()
     private var active: SavedAccount? = null
@@ -132,12 +132,14 @@ class SessionRepository(private val api: AccountApi, private val storage: Sessio
         val changed=SavedAccount(saved.config,saved.session,saved.selectedVin,saved.pins-vin,saved.binding?.let {value -> value.withDevices(value.devices.map {if(it.vin==vin) it.enabled(false) else it})},unsupportedTelemetry=saved.unsupportedTelemetry,shutdownOnLock=saved.shutdownOnLock)
         storage.write(changed);active=changed;return info()
     }
-    @Synchronized fun sendDoor(vin: String, action: DoorAction, temporaryPin: String? = null, progress: (String)->Unit = {}): SessionInfo {
+    @Synchronized fun sendDoor(vin: String, action: DoorAction, temporaryPin: String? = null, progress: (String)->Unit = {}, temperatureCelsius: Int?=null): SessionInfo {
+        if(action==DoorAction.CLIMATE_TEMPERATURE) ClimateTemperature.encode(temperatureCelsius ?: throw ApiFailure(null,"请选择目标温度"))
+        if(temperatureCelsius!=null && action!=DoorAction.CLIMATE_TEMPERATURE) throw ApiFailure(null,"温度参数与操作不匹配")
         val (saved,vehicle)=refreshed(vin)
         val pin=temporaryPin ?: saved.pins[vin] ?: throw ApiFailure(null,"请先输入操作 PIN")
         if(!Regex("[0-9]{6}").matches(pin)) throw ApiFailure(null,"PIN 必须为六位数字")
         api.verifyPin(saved.config,saved.session,vehicle,pin)
-        return sendCommands(saved,vehicle,pin,action,progress)
+        return sendCommands(saved,vehicle,pin,action,progress,temperatureCelsius)
     }
     @Synchronized fun setShutdownOnLock(vin: String, enabled: Boolean): SessionInfo {
         val saved=active ?: throw ApiFailure(null,"请先登录")
@@ -146,11 +148,12 @@ class SessionRepository(private val api: AccountApi, private val storage: Sessio
         val changed=SavedAccount(saved.config,saved.session,saved.selectedVin,saved.pins,saved.binding,saved.unsupportedTelemetry,values)
         storage.write(changed);active=changed;return info()
     }
-    private fun sendCommands(saved: SavedAccount,vehicle: Vehicle,pin: String,action: DoorAction,progress: (String)->Unit): SessionInfo {
+    private fun sendCommands(saved: SavedAccount,vehicle: Vehicle,pin: String,action: DoorAction,progress: (String)->Unit,temperatureCelsius: Int?=null): SessionInfo {
         try {
         val combined=action==DoorAction.LOCK && vehicle.vin in saved.shutdownOnLock
         val firstAction=if(combined) DoorAction.SHUTDOWN else action
-        val first=api.executeControl(saved.config,saved.session,vehicle,pin,firstAction,progress)
+        val target=temperatureCelsius ?: if(action==DoorAction.CLIMATE_ON) climateTemperature(vehicle.vin) else null
+        val first=if(target!=null && action in listOf(DoorAction.CLIMATE_ON,DoorAction.CLIMATE_TEMPERATURE)) api.executeClimateTemperature(saved.config,saved.session,vehicle,pin,target,progress) else api.executeControl(saved.config,saved.session,vehicle,pin,firstAction,progress)
         var second: ControlReceipt?=null
         if(combined && first.outcome!=RemoteOutcome.FAILURE) {
             progress(first.describe(firstAction)+"\n锁车：正在发送请求")
@@ -159,7 +162,7 @@ class SessionRepository(private val api: AccountApi, private val storage: Sessio
                 throw ApiFailure((e as? ApiFailure)?.code,first.describe(firstAction)+"；锁车未完成或结果未知："+((e as? ApiFailure)?.label ?: "请求异常")+"。未自动重试")
             }
         }
-        val message=first.describe(firstAction)+(if(second!=null) "\n"+second!!.describe(DoorAction.LOCK) else if(combined) "\n锁车：未发送（熄火执行失败）" else "")
+        val message=first.describe(firstAction)+(target?.let {"（目标 $it℃，双区同步）"} ?: "")+(if(second!=null) "\n"+second!!.describe(DoorAction.LOCK) else if(combined) "\n锁车：未发送（熄火执行失败）" else "")
         recentControls[vehicle.vin]=message
         return info().also {it.controlMessage=message}
         } catch(e: Exception) {
@@ -217,7 +220,11 @@ class SessionRepository(private val api: AccountApi, private val storage: Sessio
         storage.write(changed);active=changed
         return info()
     }
-    @Synchronized fun sendBoundDoor(bindingId: String, action: DoorAction, progress: (String)->Unit = {},configurationId: String?=null): SessionInfo {
+    @Synchronized fun sendBoundDoor(bindingId: String, action: DoorAction, progress: (String)->Unit = {},configurationId: String?=null,temperatureCelsius: Int?=null): SessionInfo {
+        if(temperatureCelsius!=null) {
+            ClimateTemperature.encode(temperatureCelsius)
+            if(action!=DoorAction.CLIMATE_ON) throw ApiFailure(null,"温度参数与操作不匹配")
+        }
         restore() ?: throw ApiFailure(null,"请先登录")
         val saved=active ?: throw ApiFailure(null,"请先登录")
         val binding=saved.binding?.takeIf {it.enabled && (configurationId==null || it.id==configurationId)} ?: throw ApiFailure(null,"绑定已停止或改变，本条指令未执行")
@@ -226,7 +233,16 @@ class SessionRepository(private val api: AccountApi, private val storage: Sessio
         val vehicle=available.find {it.vin==device.vin} ?: throw ApiFailure(null,"绑定车辆不在账号列表中")
         val pin=saved.pins[device.vin] ?: throw ApiFailure(null,"绑定车辆没有已保存的 PIN")
         api.verifyPin(saved.config,saved.session,vehicle,pin)
-        return sendCommands(saved,vehicle,pin,action,progress)
+        return sendCommands(saved,vehicle,pin,action,progress,temperatureCelsius)
+    }
+    /** Capture briefly, then read HVAC without holding the repository lock during network I/O. */
+    fun fetchClimateStatus(vin: String): ClimateReport {
+        val (saved,vehicle)=synchronized(this) {
+            val saved=active ?: throw ApiFailure(null,"请先登录")
+            val vehicle=available.find {it.vin==vin} ?: throw ApiFailure(null,"车辆不可用")
+            saved to vehicle
+        }
+        return api.fetchClimateStatus(saved.config,saved.session,vehicle)
     }
     @Synchronized fun snapshot(): SessionInfo? = active?.let {info()}
     @Synchronized fun logout() {storage.clear();active=null;available=emptyList();telemetry.clear();unsupportedTelemetry.clear();statusReports.clear()}

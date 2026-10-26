@@ -13,7 +13,9 @@ interface AccountApi {
     fun vehicles(config: AccountConfig, session: Session): List<Vehicle> = throw ApiFailure(null,"车辆列表不可用")
     fun verifyPin(config: AccountConfig, session: Session, vehicle: Vehicle, pin: String): Unit = throw ApiFailure(null,"PIN 校验不可用")
     fun telemetry(config: AccountConfig,session: Session,vehicle: Vehicle): VehicleTelemetry = throw ApiFailure(null,"车辆数据不可用")
+    fun fetchClimateStatus(config: AccountConfig,session: Session,vehicle: Vehicle): ClimateReport = throw ApiFailure(null,"空调状态读取不可用")
     fun fetchVehicleStatus(config: AccountConfig,session: Session,vehicle: Vehicle): VehicleStatus = throw ApiFailure(null,"车辆状态查询不可用")
+    fun executeClimateTemperature(config: AccountConfig,session: Session,vehicle: Vehicle,pin: String,celsius: Int,progress: (String)->Unit = {}): ControlReceipt = throw ApiFailure(null,"温度调整不可用")
     fun executeControl(config: AccountConfig,session: Session,vehicle: Vehicle,pin: String,action: DoorAction,progress: (String)->Unit = {}): ControlReceipt {
         sendDoor(config,session,vehicle,pin,action)
         return ControlReceipt(RemoteOutcome.ACCEPTED)
@@ -61,7 +63,8 @@ class BydApi(private val pause: (Long)->Unit = {Thread.sleep(it)}, private val t
     override fun sendDoor(config: AccountConfig, session: Session, vehicle: Vehicle, pin: String, action: DoorAction) {
         dispatch(config,session,vehicle,pin,action,null)
     }
-    private fun dispatch(config: AccountConfig,session: Session,vehicle: Vehicle,pin: String,action: DoorAction,serial: String?): ControlReceipt {
+    private fun dispatch(config: AccountConfig,session: Session,vehicle: Vehicle,pin: String,action: DoorAction,serial: String?,temperatureCelsius: Int?=null): ControlReceipt {
+        if(action==DoorAction.CLIMATE_TEMPERATURE) ClimateTemperature.encode(temperatureCelsius ?: throw ApiFailure(null,"请选择目标温度"))
         val protocol=CnProtocol(config)
         try {
             protocol.rcAcknowledgement(post("/control/rc/remoteAwakeRequest",protocol.wakeRequest(session,vehicle)),session)
@@ -69,16 +72,21 @@ class BydApi(private val pause: (Long)->Unit = {Thread.sleep(it)}, private val t
             throw ApiFailure(e.code,"车辆唤醒失败；控制命令未发送："+e.label)
         }
         try {
-            return protocol.controlReceipt(post("/control/rc/remoteControl",protocol.doorRequest(session,vehicle,pin,action,serial)),session)
+            return protocol.controlReceipt(post("/control/rc/remoteControl",protocol.doorRequest(session,vehicle,pin,action,serial,temperatureCelsius)),session)
         } catch(e: ApiFailure) {
-            val operation=when(action) {DoorAction.LOCK -> "锁车";DoorAction.UNLOCK -> "解锁";DoorAction.SHUTDOWN -> "熄火";DoorAction.OPEN_TRUNK -> "打开后备箱";DoorAction.CLOSE_TRUNK -> "关闭后备箱"}
+            val operation=when(action) {DoorAction.LOCK -> "锁车";DoorAction.UNLOCK -> "解锁";DoorAction.SHUTDOWN -> "熄火";DoorAction.OPEN_TRUNK -> "打开后备箱";DoorAction.CLOSE_TRUNK -> "关闭后备箱";DoorAction.CLIMATE_ON -> "开启空调";DoorAction.CLIMATE_OFF -> "关闭空调";DoorAction.CLIMATE_TEMPERATURE -> "调整空调温度"}
             if(e.code!=null) throw ApiFailure(e.code,operation+"请求被服务器拒绝："+e.label)
             throw ApiFailure(null,operation+"请求结果未知，请检查车辆；未自动重试")
         }
     }
-    override fun executeControl(config: AccountConfig,session: Session,vehicle: Vehicle,pin: String,action: DoorAction,progress: (String)->Unit): ControlReceipt {
+    override fun executeClimateTemperature(config: AccountConfig,session: Session,vehicle: Vehicle,pin: String,celsius: Int,progress: (String)->Unit): ControlReceipt {
+        ClimateTemperature.encode(celsius)
+        return execute(config,session,vehicle,pin,DoorAction.CLIMATE_TEMPERATURE,progress,celsius)
+    }
+    override fun executeControl(config: AccountConfig,session: Session,vehicle: Vehicle,pin: String,action: DoorAction,progress: (String)->Unit): ControlReceipt = execute(config,session,vehicle,pin,action,progress)
+    private fun execute(config: AccountConfig,session: Session,vehicle: Vehicle,pin: String,action: DoorAction,progress: (String)->Unit,temperatureCelsius: Int?=null): ControlReceipt {
         val sentSerial=(System.currentTimeMillis()%100000).toString()
-        val first=dispatch(config,session,vehicle,pin,action,sentSerial)
+        val first=dispatch(config,session,vehicle,pin,action,sentSerial,temperatureCelsius)
         if(first.outcome in setOf(RemoteOutcome.SUCCESS,RemoteOutcome.FAILURE)) return first
         val serial=first.serial ?: sentSerial
         val protocol=CnProtocol(config)
@@ -128,6 +136,18 @@ class BydApi(private val pause: (Long)->Unit = {Thread.sleep(it)}, private val t
         val report=try {VehicleStateReport(vehicleData(config,session,vehicle))}
             catch(e: Exception) {if(e is ApiFailure && e.sessionExpired) throw e;vehicleError=failure(e);null}
         return VehicleStatus(report,vehicleError)
+    }
+    override fun fetchClimateStatus(config: AccountConfig,session: Session,vehicle: Vehicle): ClimateReport {
+        val protocol=CnProtocol(config)
+        fun read()=ClimateReport.parse(protocol.statusResponse(post("/control/rc/getStatusNow",protocol.hvacStatusRequest(session,vehicle)),session))
+        val first=read()
+        if(first.running!=null && first.targetCelsius!=null) return first
+        pause(1000)
+        val next=try {read()} catch(e: Exception) {
+            if(e is ApiFailure && e.sessionExpired) throw e
+            return first
+        }
+        return ClimateReport(next.running ?: first.running,next.targetCelsius ?: first.targetCelsius)
     }
     fun clearCookies() { synchronized(cookies) {cookies.clear()} }
 }

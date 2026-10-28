@@ -29,6 +29,7 @@ class MainActivity: Activity() {
     private lateinit var bridgePanel: BemfaPanel
     private val scrollPositions=IntArray(3)
     private lateinit var imageLoader: VehicleImageLoader
+    private var lastControlAction: DoorAction?=null
     private var lastControlMessage="暂未发送车辆请求"
     private var manualRequest=false
     private var needsStatusRefresh=true
@@ -61,7 +62,6 @@ class MainActivity: Activity() {
         binding.navVehicle.setOnClickListener {selectTab(0)}
         binding.navBridge.setOnClickListener {selectTab(1)}
         binding.navSettings.setOnClickListener {selectTab(2)}
-        binding.pinPrompt.setOnClickListener {selectTab(2)}
         binding.bridgeStatusBadge.setOnClickListener {selectTab(1)}
         binding.notificationSettings.setOnClickListener {
             startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,packageName))
@@ -116,7 +116,7 @@ class MainActivity: Activity() {
                 binding.contentScroll.requestDisallowInterceptTouchEvent(true)
             }
             override fun onProgressChanged(slider: android.widget.SeekBar,progress: Int,fromUser: Boolean) {
-                if(fromUser) binding.climateTemperatureValue.text="目标 "+(progress+ClimateTemperature.MIN)+"℃"
+                if(fromUser) renderControls(controller.state)
             }
             override fun onStopTrackingTouch(slider: android.widget.SeekBar) {
                 binding.contentScroll.requestDisallowInterceptTouchEvent(false)
@@ -140,7 +140,6 @@ class MainActivity: Activity() {
         binding.shutdownOnLock.setOnCheckedChangeListener {_,enabled ->
             controller.state.info?.selected?.let {controller.setShutdownOnLock(it.vin,enabled)}
         }
-        binding.bemfaButton.setOnClickListener {selectTab(1)}
         controller.observe(observer);BridgeStatus.observe(bridgeObserver);controller.initialize()
     }
     private fun pinDialog(title: String, submit: (String)->Unit) {
@@ -186,24 +185,30 @@ class MainActivity: Activity() {
     }
     private fun render(state: AuthState) {
         if(renderedVehicleVin!=state.info?.selectedVin) {
-            temperatureAdjustment.cancel();needsStatusRefresh=true;renderedVehicleVin=state.info?.selectedVin;lastControlMessage="暂未发送车辆请求";manualRequest=false
+            temperatureAdjustment.cancel();needsStatusRefresh=true;renderedVehicleVin=state.info?.selectedVin;lastControlMessage="暂未发送车辆请求";lastControlAction=null;manualRequest=false
         }
+        if(state.action!=null && state.actionVin==state.info?.selectedVin) lastControlAction=state.action
         val trackingManual=manualRequest
         if(manualRequest) {
             lastControlMessage=state.message
             if(!state.busy) manualRequest=false
         }
         if(!state.busy && !trackingManual) state.info?.selectedControlMessage?.let {lastControlMessage=it}
-        binding.controlResult.text=lastControlMessage
-        binding.controlProgress.visibility=if(state.action!=null && state.busy) View.VISIBLE else View.INVISIBLE
-        binding.controlResult.setTextColor(getColor(when {
-            lastControlMessage.contains("未知") -> R.color.result_unknown
-            lastControlMessage.contains("失败") || lastControlMessage.contains("拒绝") -> R.color.result_failure
-            !state.busy && lastControlMessage.contains("执行成功") -> R.color.result_success
-            else -> R.color.ink
-        }))
+        if(!state.busy) {
+            val outcome=when {
+                lastControlMessage.contains("未知")->0
+                lastControlMessage.contains("失败") || lastControlMessage.contains("拒绝")->-1
+                lastControlMessage.contains("执行成功")->1
+                else->0
+            }
+            val color=getColor(when(outcome) {1->R.color.result_success;-1->R.color.result_failure;else->R.color.muted})
+            binding.controlOutcomeDot.background=android.graphics.drawable.GradientDrawable().apply {shape=android.graphics.drawable.GradientDrawable.OVAL;setColor(color)}
+            binding.controlOutcomeDot.contentDescription=when(outcome) {1->"最近操作执行成功";-1->"最近操作执行失败";else->"最近操作尚无明确结果"}
+        }
+        binding.controlOutcomeDot.visibility=if(selectedTab==0 && state.info?.selected!=null) View.VISIBLE else View.GONE
+        renderControlBadges(state)
         binding.statusText.text=state.message
-        binding.statusText.visibility=if(state.info==null || state.busy || settingsPage || (!manualRequest && state.message !in listOf("已复用保存的会话","登录成功，信息已加密保存","会话已通过静默登录恢复","已选择车辆","请求已发送，车辆实际状态请现场确认"))) View.VISIBLE else View.GONE
+        binding.statusText.visibility=if(state.info==null || settingsPage) View.VISIBLE else View.GONE
         binding.vehiclePage.visibility=if(settingsPage) View.GONE else View.VISIBLE
         binding.settingsPage.visibility=if(settingsPage) View.VISIBLE else View.GONE
         binding.pageTitle.text=when(selectedTab) {1 -> "设备联动";2 -> "设置";else -> "我的车辆"}
@@ -212,7 +217,7 @@ class MainActivity: Activity() {
         styleNavigation(binding.navVehicle,binding.navBridge,binding.navSettings,selectedTab)
         binding.contentScroll.visibility=if(selectedTab==1 && state.info!=null) View.GONE else View.VISIBLE
         binding.bridgePanel.root.visibility=if(selectedTab==1 && state.info!=null) View.VISIBLE else View.GONE
-        binding.progress.visibility=if(state.busy) View.VISIBLE else View.GONE
+        binding.progress.visibility=if(state.busy && (state.info==null || settingsPage)) View.VISIBLE else View.GONE
         listOf(binding.loginButton,binding.checkButton,binding.logoutButton,binding.username,binding.password,binding.brand,binding.deviceId).forEach {it.isEnabled=!state.busy}
         binding.loginForm.visibility=if(state.info==null) View.VISIBLE else View.GONE
         binding.sessionPanel.visibility=if(state.info!=null) View.VISIBLE else View.GONE
@@ -238,14 +243,7 @@ class MainActivity: Activity() {
         val vehicle=info?.selected
         binding.vehicleName.text=vehicle?.name?.ifBlank {vehicle.model}?.ifBlank {"比亚迪车辆"} ?: "选择你的车辆"
         binding.vehicleSubtitle.text=vehicle?.plate?.ifBlank {"你的专属车辆空间"} ?: "请选择要操作的车辆"
-        binding.vehicleDetails.text=vehicle?.let {
-            listOf("车型     "+it.model.ifBlank {"未提供"},"车牌     "+it.plate.ifBlank {"未提供"},
-                "身份     "+if(it.shared) "授权使用者" else "车主").joinToString("\n")
-        } ?: if(vehicles.isEmpty()) "账号未返回车辆" else "请选择要操作的车辆"
-        binding.vehicleVin.text=vehicle?.let {"VIN  "+it.maskedVin} ?: ""
         binding.pinVehicle.text=vehicle?.let {"当前车辆："+it.displayName} ?: "请先在车辆页选择车辆"
-        binding.pinPrompt.text=if(info?.hasPin==true) "PIN 已保存 · 可直接操作" else "未保存 PIN · 点击前往设置"
-        binding.bridgeTarget.text=info?.binding?.let {value -> "已配置 "+value.devices.size+" 个设备（启用 "+value.activeDevices.size+" 个）\n"+value.devices.joinToString("、") {it.name+" · "+it.function.label}} ?: "添加巴法云设备，分别控制车锁、后备箱或空调"
         imageLoader.load(vehicle?.imageUrl ?: "")
         renderControls(state)
         binding.pinStatus.text=if(info?.hasPin==true) "操作 PIN：••••••（已验证并加密保存）" else "操作 PIN：未保存"
@@ -255,7 +253,6 @@ class MainActivity: Activity() {
         binding.shutdownOnLock.isEnabled=!state.busy && vehicle!=null
         binding.shutdownOnLock.setOnCheckedChangeListener {_,enabled -> vehicle?.let {controller.setShutdownOnLock(it.vin,enabled)}}
         binding.shutdownPreferenceVehicle.text=vehicle?.let {"当前车辆："+it.displayName} ?: "请先选择车辆"
-        binding.bemfaButton.isEnabled=info!=null
         binding.navBridge.isEnabled=info!=null
         if(resumed && !state.busy && info?.binding?.enabled==true) BemfaService.start(this)
         binding.removePinButton.isEnabled=!state.busy && vehicle!=null && info?.hasPin==true
@@ -330,9 +327,11 @@ class MainActivity: Activity() {
         val climateReading=status.canReadClimate() && info?.selectedVin in state.climateBusy
         val climateOperating=state.busy && sameVehicle && state.action in listOf(DoorAction.CLIMATE_ON,DoorAction.CLIMATE_OFF,DoorAction.CLIMATE_TEMPERATURE)
         val climateTarget=climate?.targetCelsius ?: report?.climateTargetCelsius
-        val climateLabel=(when(climate?.running) {true->"已开启";false->"已关闭";null->"状态未知"})+(climateTarget?.let {" · $it℃"} ?: " · —℃")
+        val selectedTarget=if(temperatureAdjustment.active) binding.climateTemperatureSlider.progress+ClimateTemperature.MIN else chosenTemperatures[info?.selectedVin] ?: info?.selectedVin?.let {temperaturePreferences.get(it)} ?: climateTarget ?: ClimateTemperature.DEFAULT
+        binding.climateTemperatureValue.text="目标 $selectedTarget℃"
+        val climateLabel=(when(climate?.running) {true->"已开启";false->"已关闭";null->"状态未知"})+(if(climate.running!=null) " $selectedTarget℃" else "")
         val climateAction=when {climateReading->"正在读取";climate?.running==true->"点击关闭";climate?.running==false->"点击开启";else->"点击选择操作"}
-        tile(binding.climateButton,binding.climateIcon,binding.climateState,binding.climateHint,binding.climateProgress,climateOperating,climateLabel,climateAction,R.drawable.ic_state_climate,when(climate?.running) {true->2;false->1;null->0},"空调目标温度")
+        tile(binding.climateButton,binding.climateIcon,binding.climateState,binding.climateHint,binding.climateProgress,climateOperating,climateLabel,climateAction,R.drawable.ic_state_climate,when(climate?.running) {true->2;false->1;null->0},"空调，目标温度")
         binding.climateButton.isEnabled=!state.busy && !climateReading && info?.selected!=null
         val vin=info?.selectedVin
         if(state.busy || vin!=renderedVehicleVin) temperatureAdjustment.cancel()
@@ -349,11 +348,30 @@ class MainActivity: Activity() {
             else->"空调状态未知，仅保存下次开启的温度"
         }
         binding.climateTemperatureProgress.visibility=if(climateOperating) View.VISIBLE else View.GONE
-        binding.refreshVehicleStatus.text=if(state.busy && state.refreshing) "" else "刷新"
-        binding.refreshVehicleStatus.contentDescription=if(state.busy && state.refreshing) "正在刷新车辆状态" else "刷新车辆状态"
-        binding.refreshVehicleStatus.isEnabled=!state.busy && info?.selected!=null
-        binding.refreshStatusProgress.visibility=if(state.busy && state.refreshing) View.VISIBLE else View.GONE
-        if(state.busy && state.action!=null && sameVehicle) binding.controlResult.text=state.message
+        val refreshLoading=(state.busy && state.refreshing) || climateReading
+        binding.headerRefresh.visibility=if(selectedTab==0 && info?.selected!=null) View.VISIBLE else View.GONE
+        binding.refreshVehicleStatus.setImageResource(if(refreshLoading) 0 else R.drawable.ic_refresh)
+        binding.refreshVehicleStatus.contentDescription=if(refreshLoading) "正在刷新车辆状态" else "刷新车辆状态"
+        binding.refreshVehicleStatus.isEnabled=!state.busy && !refreshLoading && info?.selected!=null
+        binding.refreshStatusProgress.visibility=if(refreshLoading) View.VISIBLE else View.GONE
+
+    }
+    private fun renderControlBadges(state: AuthState) {
+        val busy=state.busy && state.action!=null
+        binding.controlProgress.visibility=if(busy) View.VISIBLE else View.GONE
+        binding.controlResultBadges.removeAllViews()
+        controlResultBadges(lastControlMessage,busy,lastControlAction).forEach {badge ->
+            val background=getColor(when(badge.success) {true->R.color.state_calm_bg;false->R.color.state_active_bg;null->R.color.state_unknown_bg})
+            val ink=getColor(when(badge.success) {true->R.color.state_calm_ink;false->R.color.state_active_ink;null->R.color.state_unknown_ink})
+            binding.controlResultBadges.addView(android.widget.TextView(this).apply {
+                text=badge.text;textSize=11f;setTextColor(ink)
+                val density=resources.displayMetrics.density
+                setPadding((6*density).toInt(),(4*density).toInt(),(6*density).toInt(),(4*density).toInt())
+                this.background=android.graphics.drawable.GradientDrawable().apply {setColor(background);cornerRadius=6*density}
+                layoutParams=android.widget.LinearLayout.LayoutParams(-2,-2).apply {marginStart=(4*density).toInt()}
+                contentDescription=badge.text+"，"+lastControlMessage
+            })
+        }
     }
     private fun selectTab(requested: Int) {
         val tab=requested.coerceIn(0,2)
